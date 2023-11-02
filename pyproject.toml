@@ -1,0 +1,64 @@
+[project]
+
+name = "invrs_utils"
+version = "v0.0.0"
+description = "Miscellaneous utilities for the invrs-io ecosystem"
+keywords = ["topology", "optimization", "jax", "inverse design"]
+readme = "README.md"
+requires-python = ">=3.7"
+license = {file = "LICENSE"}
+
+authors = [
+    {name = "Martin F. Schubert", email = "mfschubert@gmail.com"},
+]
+maintainers = [
+    {name = "Martin F. Schubert", email = "mfschubert@gmail.com"},
+]
+
+dependencies = [
+    "pandas",
+    "totypes",
+]
+
+[project.optional-dependencies]
+tests = [
+    "parameterized",
+    "pytest",
+    "pytest-cov",
+    "pytest-subtests",
+]
+dev = [
+    "bump-my-version",
+    "darglint",
+    "invrs_utils[tests]",
+    "mypy",
+    "pandas-stubs",
+    "pre-commit",
+]
+
+[build-system]
+requires = ["setuptools>=45", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.package-data]
+"invrs_utils" = ["py.typed"]
+
+[tool.pytest.ini_options]
+addopts = ["--import-mode=importlib"]  # Allow tests with same name in different dirs.
+pythonpath = ["src"]
+
+[tool.black]
+line-length = 88
+target-version = ['py310']
+
+[tool.mypy]
+follow_imports = "normal"
+
+[tool.isort]
+multi_line_output = 3
+line_length = 88
+include_trailing_comma = true
+
+[tool.pydocstyle]
+inherit = false
+convention = "google"
