@@ -74,3 +74,26 @@ class CheckpointManagerTest(unittest.TestCase):
             self.assertSequenceEqual(
                 checkpoints, [tmpdir + f"/checkpoint_{max_steps - 1:04}.json"]
             )
+
+
+class FnameTest(unittest.TestCase):
+    @parameterized.expand(
+        [
+            ["experiment/wid_0000/checkpoint_1.json", 1],
+            ["experiment/wid_0000/checkpoint_0001.json", 1],
+            ["experiment/wid_0000/checkpoint_0999.json", 999],
+            ["experiment/wid_0000/checkpoint_85000.json", 85000],
+        ]
+    )
+    def test_step_for_fname(self, fname, expected):
+        self.assertEqual(checkpoint._step_for_fname(fname), expected)
+
+    @parameterized.expand(
+        [
+            ["experiment/wid_0000", 1, "experiment/wid_0000/checkpoint_0001.json"],
+            ["experiment/wid_0000", 999, "experiment/wid_0000/checkpoint_0999.json"],
+            ["experiment/wid_0000", 85000, "experiment/wid_0000/checkpoint_85000.json"],
+        ]
+    )
+    def test_fname_for_step(self, wid_path, step, expected):
+        self.assertEqual(checkpoint._fname_for_step(wid_path, step), expected)
