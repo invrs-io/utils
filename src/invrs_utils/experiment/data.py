@@ -3,16 +3,15 @@
 Copyright (c) 2023 The INVRS-IO authors.
 """
 
-from datetime import datetime
 import glob
 import json
 import os
+from datetime import datetime
 from typing import Any, Dict, List, Sequence, Tuple
 
 import jax
 import numpy as onp
 import pandas as pd
-from totypes import json_utils
 
 from invrs_utils.experiment import checkpoint
 
@@ -166,7 +165,7 @@ def load_work_unit_scalars(wid_path: str) -> Tuple[Dict, pd.DataFrame]:
         containing the logged scalars.
     """
     assert checkpoint_exists(wid_path)
-    latest_step = checkpoint.latest_step(wid_path)
+    latest_step: int = checkpoint.latest_step(wid_path)  # type: ignore[assignment]
 
     with open(f"{wid_path}/{FNAME_WID_CONFIG}") as f:
         wid_config = json.load(f)
