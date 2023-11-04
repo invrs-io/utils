@@ -86,7 +86,7 @@ class FnameTest(unittest.TestCase):
         ]
     )
     def test_step_for_fname(self, fname, expected):
-        self.assertEqual(checkpoint._step_for_fname(fname), expected)
+        self.assertEqual(checkpoint.step_for_fname(fname), expected)
 
     @parameterized.expand(
         [
@@ -96,4 +96,4 @@ class FnameTest(unittest.TestCase):
         ]
     )
     def test_fname_for_step(self, wid_path, step, expected):
-        self.assertEqual(checkpoint._fname_for_step(wid_path, step), expected)
+        self.assertEqual(checkpoint.fname_for_step(wid_path, step), expected)

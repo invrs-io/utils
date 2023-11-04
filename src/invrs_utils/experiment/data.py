@@ -6,14 +6,19 @@ Copyright (c) 2023 The INVRS-IO authors.
 import glob
 import json
 import os
+from datetime import datetime
 from typing import Any, Dict, List, Sequence, Tuple
 
 import jax
 import numpy as onp
 import pandas as pd
-from totypes import json_utils
+
+from invrs_utils.experiment import checkpoint
 
 WID = "wid"
+LATEST_STEP = "latest_step"
+LATEST_TIME_UTC = "latest_time_utc"
+TIME_FORMAT = "%Y-%m-%d %H:%M:%S"
 
 LOSS = "loss"
 LOSS_MIN = "loss_min"
@@ -160,18 +165,22 @@ def load_work_unit_scalars(wid_path: str) -> Tuple[Dict, pd.DataFrame]:
         containing the logged scalars.
     """
     assert checkpoint_exists(wid_path)
+    latest_step: int = checkpoint.latest_step(wid_path)  # type: ignore[assignment]
 
     with open(f"{wid_path}/{FNAME_WID_CONFIG}") as f:
         wid_config = json.load(f)
     wid_config[WID] = wid_path.split("/")[-1]
     wid_config[COMPLETED] = os.path.isfile(f"{wid_path}/{FNAME_COMPLETED}")
     wid_config = flatten_nested(wid_config)
+    wid_config[LATEST_STEP] = latest_step
 
-    checkpoint_fname = glob.glob(f"{wid_path}/{PREFIX_CHECKPOINT}*.json")
-    checkpoint_fname.sort()
-    with open(checkpoint_fname[-1]) as f:
-        checkpoint = json_utils.pytree_from_json(f.read())
-    df = pd.DataFrame.from_dict(checkpoint[SCALARS])
+    timestamp = os.path.getmtime(checkpoint.fname_for_step(wid_path, latest_step))
+    wid_config[LATEST_TIME_UTC] = datetime.utcfromtimestamp(timestamp).strftime(
+        TIME_FORMAT
+    )
+
+    latest_checkpoint = checkpoint.load(wid_path, latest_step)
+    df = pd.DataFrame.from_dict(latest_checkpoint[SCALARS])
     return wid_config, df
 
 
