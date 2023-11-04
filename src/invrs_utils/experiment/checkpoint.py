@@ -66,13 +66,13 @@ class CheckpointManager:
         """Save a pytree checkpoint."""
         if (step + 1) % self.save_interval_steps != 0 and not force_save:
             return
-        with open(_fname_for_step(self.path, step), "w") as f:
+        with open(fname_for_step(self.path, step), "w") as f:
             f.write(self.serialize_fn(pytree))
         steps = checkpoint_steps(self.path)
         steps.sort()
         steps_to_delete = steps[: -self.max_to_keep]
         for step in steps_to_delete:
-            os.remove(_fname_for_step(self.path, step))
+            os.remove(fname_for_step(self.path, step))
 
     def restore(self, step: int) -> Any:
         """Restore a pytree checkpoint."""
@@ -88,8 +88,8 @@ def latest_step(wid_path: str) -> Optional[int]:
 
 def checkpoint_steps(wid_path: str) -> List[int]:
     """Return the chackpoint filename for the given step."""
-    fnames = glob.glob(_fname_for_step(wid_path, step="*"))
-    return [_step_for_fname(f) for f in fnames]
+    fnames = glob.glob(fname_for_step(wid_path, step="*"))
+    return [step_for_fname(f) for f in fnames]
 
 
 def load(
@@ -98,16 +98,16 @@ def load(
     deserialze_fn: Callable[[str], Any] = DESERIALIZE_FN,
 ) -> Any:
     """Load the checkpoitn for the given step from the `wid_path`."""
-    with open(_fname_for_step(wid_path, step)) as f:
+    with open(fname_for_step(wid_path, step)) as f:
         return deserialze_fn(f.read())
 
 
-def _fname_for_step(wid_path: str, step: Union[int, str]) -> str:
+def fname_for_step(wid_path: str, step: Union[int, str]) -> str:
     """Return the filename for the given step."""
     step_str = f"{step:04}" if isinstance(step, int) else str(step)
     return f"{wid_path}/checkpoint_{step_str}.json"
 
 
-def _step_for_fname(checkpoint_fname: str) -> int:
+def step_for_fname(checkpoint_fname: str) -> int:
     """Return the step for the given checkpoint filename."""
     return int(checkpoint_fname.split("_")[-1][:-5])
