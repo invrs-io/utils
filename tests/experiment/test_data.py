@@ -69,7 +69,7 @@ class DataTest(unittest.TestCase):
             wid_config, df = data.load_work_unit_scalars(tmpdir)
         self.assertSequenceEqual(
             set(wid_config.keys()),
-            {"a", "b", "c", "completed", "wid", "latest_step", "latest_step_time"},
+            {"a", "b", "c", "completed", "wid", "latest_step", "latest_time_utc"},
         )
         self.assertSequenceEqual(set(df.columns), {"loss", "distance"})
         self.assertEqual(len(df), STEPS)
@@ -87,7 +87,7 @@ class DataTest(unittest.TestCase):
             "wid.completed",
             "wid.wid",
             "wid.latest_step",
-            "wid.latest_step_time",
+            "wid.latest_time_utc",
             data.SUMMARY_INTERVAL,
             data.LOSS_MIN,
             data.LOSS_MEAN,

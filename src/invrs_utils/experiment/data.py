@@ -18,7 +18,7 @@ from invrs_utils.experiment import checkpoint
 
 WID = "wid"
 LATEST_STEP = "latest_step"
-LATEST_STEP_TIME = "latest_step_time"
+LATEST_TIME_UTC = "latest_time_utc"
 TIME_FORMAT = "%Y-%m-%d %H:%M:%S"
 
 LOSS = "loss"
@@ -176,7 +176,7 @@ def load_work_unit_scalars(wid_path: str) -> Tuple[Dict, pd.DataFrame]:
     wid_config[LATEST_STEP] = latest_step
 
     timestamp = os.path.getmtime(checkpoint.fname_for_step(wid_path, latest_step))
-    wid_config[LATEST_STEP_TIME] = datetime.utcfromtimestamp(timestamp).strftime(
+    wid_config[LATEST_TIME_UTC] = datetime.utcfromtimestamp(timestamp).strftime(
         TIME_FORMAT
     )
 
