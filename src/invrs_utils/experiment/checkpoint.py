@@ -60,6 +60,7 @@ class CheckpointManager:
     deserialize_fn: Callable[[str], Any] = DESERIALIZE_FN
 
     def __post_init__(self):
+        """Validates of `CheckpointManager` attributes."""
         if not os.path.exists(self.path):
             raise ValueError(f"`path` does not exist, got {self.path}.")
 
