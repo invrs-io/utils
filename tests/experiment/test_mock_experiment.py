@@ -22,12 +22,14 @@ def run_analysis(experiment_path, timeout):
     while not done and time.time() < max_time:
         # Summary should have a single row per work unit.
         try:
-            df = data.summarize_experiment(experiment_path, summarize_intervals=[(0, 500)])
+            df = data.summarize_experiment(
+                experiment_path, summarize_intervals=[(0, 500)]
+            )
+            done = len(df) == NUM_WORK_UNITS and df["wid.completed"].all()
         except ValueError:
             # If no work unit data is ready, a ValueError is raised.
             pass
         time.sleep(0.5)
-        done = len(df) == NUM_WORK_UNITS and df["wid.completed"].all()
 
     return df
 
