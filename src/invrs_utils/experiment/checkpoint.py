@@ -85,7 +85,7 @@ class CheckpointManager:
 
     def restore(self, step: int) -> Any:
         """Restore a pytree checkpoint."""
-        return load(self.path, step, deserialze_fn=self.deserialize_fn)
+        return load(self.path, step, deserialize_fn=self.deserialize_fn)
 
 
 def latest_step(wid_path: str) -> Optional[int]:
