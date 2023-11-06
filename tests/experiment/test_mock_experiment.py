@@ -21,7 +21,11 @@ def run_analysis(experiment_path, timeout):
     max_time = time.time() + timeout
     while not done and time.time() < max_time:
         # Summary should have a single row per work unit.
-        df = data.summarize_experiment(experiment_path, summarize_intervals=[(0, 500)])
+        try:
+            df = data.summarize_experiment(experiment_path, summarize_intervals=[(0, 500)])
+        except ValueError:
+            # If no work unit data is ready, a ValueError is raised.
+            pass
         time.sleep(0.5)
         done = len(df) == NUM_WORK_UNITS and df["wid.completed"].all()
 
@@ -117,8 +121,6 @@ class MockExperimentTest(unittest.TestCase):
                 kwargs={"experiment_path": tmpdir, "workers": 5},
             )
             p.start()
-            # Wait until some work units have started saving checkpoints.
-            time.sleep(2)
             # Run the analysis. This will repeatedly summarize the experiment, and
             # return once all work units have been finished.
             df = run_analysis(experiment_path=tmpdir, timeout=100)
