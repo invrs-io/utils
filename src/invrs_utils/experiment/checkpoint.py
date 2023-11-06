@@ -59,6 +59,10 @@ class CheckpointManager:
     serialize_fn: Callable[[Any], str] = SERIALIZE_FN
     deserialize_fn: Callable[[str], Any] = DESERIALIZE_FN
 
+    def __post_init__(self):
+        if not os.path.exists(self.path):
+            raise ValueError("`path` does not exist.")
+
     def latest_step(self) -> Optional[int]:
         """Return the latest checkpointed step, or `None` if no checkpoints exist."""
         return latest_step(self.path)
