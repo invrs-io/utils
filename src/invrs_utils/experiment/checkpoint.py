@@ -99,11 +99,12 @@ def checkpoint_steps(wid_path: str) -> List[int]:
 def load(
     wid_path: str,
     step: int,
-    deserialze_fn: Callable[[str], Any] = DESERIALIZE_FN,
+    deserialize_fn: Callable[[str], Any] = DESERIALIZE_FN,
 ) -> Any:
     """Load the checkpoitn for the given step from the `wid_path`."""
     with open(fname_for_step(wid_path, step)) as f:
-        return deserialze_fn(f.read())
+        data = f.read()
+    return deserialize_fn(data)
 
 
 def fname_for_step(wid_path: str, step: Union[int, str]) -> str:
