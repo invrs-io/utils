@@ -6,6 +6,7 @@ Copyright (c) 2023 The INVRS-IO authors.
 import dataclasses
 import glob
 import os
+import time
 from typing import Any, Callable, List, Optional, Union
 
 from totypes import json_utils
@@ -58,6 +59,11 @@ class CheckpointManager:
     serialize_fn: Callable[[Any], str] = SERIALIZE_FN
     deserialize_fn: Callable[[str], Any] = DESERIALIZE_FN
 
+    def __post_init__(self):
+        """Validates of `CheckpointManager` attributes."""
+        if not os.path.exists(self.path):
+            raise ValueError(f"`path` does not exist, got {self.path}.")
+
     def latest_step(self) -> Optional[int]:
         """Return the latest checkpointed step, or `None` if no checkpoints exist."""
         return latest_step(self.path)
@@ -66,8 +72,11 @@ class CheckpointManager:
         """Save a pytree checkpoint."""
         if (step + 1) % self.save_interval_steps != 0 and not force_save:
             return
-        with open(fname_for_step(self.path, step), "w") as f:
-            f.write(self.serialize_fn(pytree))
+        serialized = self.serialize_fn(pytree)
+        temp_fname = f"{self.path}/temp_{str(int(time.time()))}.json"
+        with open(temp_fname, "w") as f:
+            f.write(serialized)
+        os.rename(temp_fname, fname_for_step(self.path, step))
         steps = checkpoint_steps(self.path)
         steps.sort()
         steps_to_delete = steps[: -self.max_to_keep]
@@ -76,7 +85,7 @@ class CheckpointManager:
 
     def restore(self, step: int) -> Any:
         """Restore a pytree checkpoint."""
-        return load(self.path, step, deserialze_fn=self.deserialize_fn)
+        return load(self.path, step, deserialize_fn=self.deserialize_fn)
 
 
 def latest_step(wid_path: str) -> Optional[int]:
@@ -95,11 +104,12 @@ def checkpoint_steps(wid_path: str) -> List[int]:
 def load(
     wid_path: str,
     step: int,
-    deserialze_fn: Callable[[str], Any] = DESERIALIZE_FN,
+    deserialize_fn: Callable[[str], Any] = DESERIALIZE_FN,
 ) -> Any:
     """Load the checkpoitn for the given step from the `wid_path`."""
     with open(fname_for_step(wid_path, step)) as f:
-        return deserialze_fn(f.read())
+        data = f.read()
+    return deserialize_fn(data)
 
 
 def fname_for_step(wid_path: str, step: Union[int, str]) -> str:
