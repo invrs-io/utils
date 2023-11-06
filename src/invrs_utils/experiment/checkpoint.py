@@ -6,6 +6,7 @@ Copyright (c) 2023 The INVRS-IO authors.
 import dataclasses
 import glob
 import os
+import time
 from typing import Any, Callable, List, Optional, Union
 
 from totypes import json_utils
@@ -66,8 +67,11 @@ class CheckpointManager:
         """Save a pytree checkpoint."""
         if (step + 1) % self.save_interval_steps != 0 and not force_save:
             return
-        with open(fname_for_step(self.path, step), "w") as f:
-            f.write(self.serialize_fn(pytree))
+        serialized = self.serialize_fn(pytree)
+        temp_fname = f"{self.path}/temp_{str(int(time.time()))}.json"
+        with open(temp_fname, "w") as f:
+            f.write(serialized)
+        os.rename(temp_fname, fname_for_step(self.path, step))
         steps = checkpoint_steps(self.path)
         steps.sort()
         steps_to_delete = steps[: -self.max_to_keep]
