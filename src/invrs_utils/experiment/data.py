@@ -23,14 +23,20 @@ TIME_FORMAT = "%Y-%m-%d %H:%M:%S"
 LOSS = "loss"
 LOSS_MIN = "loss_min"
 LOSS_MEAN = "loss_mean"
-LOSS_PERCENTILE_10 = "loss_percentile_10"
+LOSS_P05 = "loss_p05"
+LOSS_P10 = "loss_p10"
+LOSS_P25 = "loss_p25"
+LOSS_P50 = "loss_p50"
 
 DISTANCE = "distance"
 DISTANCE_MIN = "distance_min"
 DISTANCE_MEAN = "distance_mean"
 DISTANCE_ZERO_STEP = "distance_zero_step"
 DISTANCE_ZERO_COUNT = "distance_zero_count"
-DISTANCE_PERCENTILE_10 = "distance_percentile_10"
+DISTANCE_P05 = "distance_p05"
+DISTANCE_P10 = "distance_p10"
+DISTANCE_P25 = "distance_p25"
+DISTANCE_P50 = "distance_p50"
 
 SUMMARY_INTERVAL = "summary_interval"
 
@@ -109,10 +115,16 @@ def summarize_work_unit(
         SUMMARY_INTERVAL,
         LOSS_MIN,
         LOSS_MEAN,
-        LOSS_PERCENTILE_10,
+        LOSS_P05,
+        LOSS_P10,
+        LOSS_P25,
+        LOSS_P50,
         DISTANCE_MIN,
         DISTANCE_MEAN,
-        DISTANCE_PERCENTILE_10,
+        DISTANCE_P05,
+        DISTANCE_P10,
+        DISTANCE_P25,
+        DISTANCE_P50,
         DISTANCE_ZERO_COUNT,
         DISTANCE_ZERO_STEP,
     ):
@@ -126,10 +138,16 @@ def summarize_work_unit(
 
         data[LOSS_MIN].append(onp.amin(interval_loss))
         data[LOSS_MEAN].append(onp.mean(interval_loss))
-        data[LOSS_PERCENTILE_10].append(onp.percentile(interval_loss, 10))
+        data[LOSS_P05].append(onp.percentile(interval_loss, 5))
+        data[LOSS_P10].append(onp.percentile(interval_loss, 10))
+        data[LOSS_P25].append(onp.percentile(interval_loss, 25))
+        data[LOSS_P50].append(onp.percentile(interval_loss, 50))
         data[DISTANCE_MIN].append(onp.amin(interval_distance))
         data[DISTANCE_MEAN].append(onp.mean(interval_distance))
-        data[DISTANCE_PERCENTILE_10].append(onp.percentile(interval_distance, 10))
+        data[DISTANCE_P05].append(onp.percentile(interval_distance, 5))
+        data[DISTANCE_P10].append(onp.percentile(interval_distance, 10))
+        data[DISTANCE_P25].append(onp.percentile(interval_distance, 25))
+        data[DISTANCE_P50].append(onp.percentile(interval_distance, 50))
         data[DISTANCE_ZERO_COUNT].append(onp.sum(interval_distance <= 0))
 
         (zero_distance_steps,) = onp.where(interval_distance <= 0)

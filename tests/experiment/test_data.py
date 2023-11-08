@@ -91,10 +91,16 @@ class DataTest(unittest.TestCase):
             data.SUMMARY_INTERVAL,
             data.LOSS_MIN,
             data.LOSS_MEAN,
-            data.LOSS_PERCENTILE_10,
+            data.LOSS_P05,
+            data.LOSS_P10,
+            data.LOSS_P25,
+            data.LOSS_P50,
             data.DISTANCE_MIN,
             data.DISTANCE_MEAN,
-            data.DISTANCE_PERCENTILE_10,
+            data.DISTANCE_P05,
+            data.DISTANCE_P10,
+            data.DISTANCE_P25,
+            data.DISTANCE_P50,
             data.DISTANCE_ZERO_STEP,
             data.DISTANCE_ZERO_COUNT,
         ]
@@ -109,7 +115,7 @@ class DataTest(unittest.TestCase):
             onp.mean(_loss(onp.arange(0, 10))),
         )
         onp.testing.assert_allclose(
-            df[df["summary_interval"] == "000-010"][data.LOSS_PERCENTILE_10],
+            df[df["summary_interval"] == "000-010"][data.LOSS_P10],
             onp.percentile(_loss(onp.arange(0, 10)), 10),
         )
 
@@ -122,7 +128,7 @@ class DataTest(unittest.TestCase):
             onp.mean(_distance(onp.arange(0, 10))),
         )
         onp.testing.assert_allclose(
-            df[df["summary_interval"] == "000-010"][data.DISTANCE_PERCENTILE_10],
+            df[df["summary_interval"] == "000-010"][data.DISTANCE_P10],
             onp.percentile(_distance(onp.arange(0, 10)), 10),
         )
 
