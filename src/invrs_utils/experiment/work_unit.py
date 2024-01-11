@@ -5,21 +5,21 @@ Copyright (c) 2023 The INVRS-IO authors.
 
 import os
 import time
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Optional, Protocol, Tuple
 
 import jax
 import jax.numpy as jnp
-from invrs_gym.challenges import base as challenge_base
-from invrs_opt import base
 
 from invrs_utils.experiment import checkpoint
+
+PyTree = Any
 
 
 def run_work_unit(
     key: jax.Array,
     wid_path: str,
-    challenge: challenge_base.Challenge,
-    optimizer: base.Optimizer,
+    challenge: "Challenge",
+    optimizer: "Optimizer",
     steps: int,
     stop_on_zero_distance: bool,
     stop_requires_binary: bool,
@@ -184,3 +184,54 @@ def _is_scalar(x: Any) -> bool:
         return True
     except Exception:
         return False
+
+
+# -----------------------------------------------------------------------------
+# Protocols defining the `Challenge` and `Optimizer` objects.
+# -----------------------------------------------------------------------------
+
+
+class Component(Protocol):
+    def init(self, key: jax.Array) -> PyTree:
+        ...
+
+    def response(self, params: PyTree) -> Tuple[jnp.ndarray, Dict[str, Any]]:
+        ...
+
+
+class Challenge(Protocol):
+    component: Component
+
+    def loss(self, response: PyTree) -> jnp.ndarray:
+        ...
+
+    def distance_to_target(self, response: PyTree) -> jnp.ndarray:
+        ...
+
+    def metrics(
+        self, response: PyTree, Params: PyTree, aux: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        ...
+
+
+class InitFn(Protocol):
+    def __call__(self, params: PyTree) -> PyTree:
+        ...
+
+
+class ParamsFn(Protocol):
+    def __call__(self, state: PyTree) -> PyTree:
+        ...
+
+
+class UpdateFn(Protocol):
+    def __call__(
+        self, *, grad: PyTree, value: float, params: PyTree, state: PyTree
+    ) -> PyTree:
+        ...
+
+
+class Optimizer(Protocol):
+    init: InitFn
+    update: UpdateFn
+    params: ParamsFn
