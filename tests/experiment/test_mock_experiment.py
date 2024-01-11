@@ -3,6 +3,8 @@
 Copyright (c) 2023 The INVRS-IO authors.
 """
 
+import dataclasses
+import glob
 import json
 import multiprocessing as mp
 import os
@@ -14,6 +16,7 @@ NUM_WORK_UNITS = 40
 
 
 def run_analysis(experiment_path, timeout):
+    """Builds a summary dataframe, sleeps, and repeats until timeout."""
     from invrs_utils.experiment import data
 
     df = None
@@ -35,6 +38,7 @@ def run_analysis(experiment_path, timeout):
 
 
 def run_experiment(experiment_path, workers, steps):
+    """Runs an experiment with multiple conditions and work units."""
     from invrs_utils.experiment import sweep
 
     sweeps = sweep.product(
@@ -63,7 +67,8 @@ def _run_work_unit(path_and_kwargs):
 
 
 def run_work_unit(wid_path, seed, steps, a, b, c):
-    print(f"Launching {wid_path}")
+    if os.path.isfile(f"{wid_path}/completed.txt"):
+        return
     if not os.path.exists(wid_path):
         os.makedirs(wid_path)
 
@@ -72,77 +77,61 @@ def run_work_unit(wid_path, seed, steps, a, b, c):
         json.dump(work_unit_config, f, indent=4)
 
     import invrs_opt
-    import jax
     import jax.numpy as jnp
+    from invrs_gym.challenges import base as challenge_base
     from jax import random, tree_util
     from totypes import types
 
-    from invrs_utils.experiment import checkpoint
+    from invrs_utils.experiment import work_unit
 
-    mngr = checkpoint.CheckpointManager(
-        path=wid_path,
+    class DummyComponent(challenge_base.Component):
+        def init(self, key):
+            k1, k2 = random.split(key)
+            return {
+                "bounded_array": types.BoundedArray(
+                    array=random.normal(k1, (20, 20)),
+                    lower_bound=-2,
+                    upper_bound=2,
+                ),
+                "density2d": types.Density2DArray(
+                    array=random.normal(k2, shape=(30, 40)),
+                    lower_bound=0,
+                    upper_bound=2,
+                ),
+            }
+
+        def response(self, params):
+            leaves = tree_util.tree_leaves(params)
+            leaf_sums = tree_util.tree_map(
+                lambda leaf: jnp.sum(jnp.abs(leaf) ** 2), leaves
+            )
+            return jnp.asarray(leaf_sums), {}
+
+    @dataclasses.dataclass
+    class DummyChallenge(challenge_base.Challenge):
+        component: challenge_base.Component
+
+        def loss(self, response):
+            return jnp.sum(response)
+
+        def distance_to_target(self, response):
+            return jnp.sum(response) - 0.01
+
+        def metrics(self, response, params, aux):
+            return super().metrics(response, params, aux)
+
+    work_unit.run_work_unit(
+        key=random.PRNGKey(seed),
+        wid_path=wid_path,
+        challenge=DummyChallenge(component=DummyComponent()),
+        optimizer=invrs_opt.lbfgsb(),
+        steps=steps,
+        stop_on_zero_distance=False,
+        stop_requires_binary=True,
         save_interval_steps=10,
         max_to_keep=1,
+        print_interval=None,
     )
-
-    def dummy_loss(x):
-        leaves = tree_util.tree_leaves(x)
-        leaf_sums = tree_util.tree_map(lambda leaf: jnp.sum(jnp.abs(leaf) ** 2), leaves)
-        return jnp.sum(jnp.asarray(tree_util.tree_leaves(leaf_sums)))
-
-    opt = invrs_opt.lbfgsb()
-
-    if mngr.latest_step() is None:
-        key = random.PRNGKey(seed)
-        k1, k2 = random.split(key)
-        params = {
-            "bounded_array": types.BoundedArray(
-                array=random.normal(k1, (20, 20)),
-                lower_bound=-2,
-                upper_bound=2,
-            ),
-            "density2d": types.Density2DArray(
-                array=random.normal(k2, shape=(30, 40)),
-                lower_bound=0,
-                upper_bound=2,
-            ),
-        }
-        state = opt.init(params)
-        scalars = {}
-        latest_step = -1
-    else:
-        ckpt = mngr.restore(mngr.latest_step())
-        params = ckpt["params"]
-        state = ckpt["state"]
-        scalars = ckpt["scalars"]
-        latest_step = mngr.latest_step()
-
-    def _log_scalar(name, value):
-        if name not in scalars:
-            scalars[name] = jnp.zeros((0,))
-        scalars[name] = jnp.concatenate([scalars[name], jnp.asarray([value])])
-
-    for i in range(latest_step + 1, steps):
-        params = opt.params(state)
-        value, grad = jax.value_and_grad(dummy_loss)(params)
-        state = opt.update(grad=grad, value=value, params=params, state=state)
-        _log_scalar("loss", value)
-        _log_scalar("distance", value - 0.01)
-        mngr.save(
-            step=i,
-            pytree={"scalars": scalars, "params": params, "state": state},
-            force_save=False,
-        )
-
-    mngr.save(
-        step=i,
-        pytree={"scalars": scalars, "params": params, "state": state},
-        force_save=True,
-    )
-
-    with open(wid_path + "/completed.txt", "w") as f:
-        os.utime(wid_path, None)
-    print(f"Completed {wid_path}")
 
 
 class MockExperimentTest(unittest.TestCase):
@@ -163,6 +152,10 @@ class MockExperimentTest(unittest.TestCase):
             self.assertIsNotNone(df)
             self.assertEqual(len(df), NUM_WORK_UNITS)
             self.assertTrue((df["wid.latest_step"] == 49).all())
+
+            # Delete all the `completed.txt`, and run some additional steps.
+            for path in glob.glob(f"{tmpdir}/wid_*/completed.txt"):
+                os.remove(path)
 
             # Relaunch the experiment, which runs all work units for a few more steps.
             p = mp.Process(
