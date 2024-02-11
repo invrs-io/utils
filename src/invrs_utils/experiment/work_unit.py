@@ -73,13 +73,15 @@ def run_work_unit(
     def step_fn(state: Any):
         def loss_fn(
             params: Any,
-        ) -> Tuple[jnp.ndarray, Tuple[Any, jnp.ndarray, Dict[str, Any], Dict[str, Any]]]:
+        ) -> Tuple[
+            jnp.ndarray, Tuple[Any, jnp.ndarray, Dict[str, Any], Dict[str, Any]]
+        ]:
             response, aux = challenge.component.response(params)
             loss = challenge.loss(response)
             distance = challenge.distance_to_target(response)
             metrics = challenge.metrics(response, params, aux)
             return loss, (response, distance, metrics, aux)
-        
+
         params = optimizer.params(state)
         (value, (response, distance, metrics, aux)), grad = jax.value_and_grad(
             loss_fn, has_aux=True
