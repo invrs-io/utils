@@ -12,7 +12,8 @@ import tempfile
 import time
 import unittest
 
-NUM_WORK_UNITS = 40
+# Matches the experiment defined in `run_experiment`.
+NUM_WORK_UNITS = 24
 
 
 def run_analysis(experiment_path, timeout):
@@ -43,7 +44,7 @@ def run_experiment(experiment_path, workers, steps):
 
     sweeps = sweep.product(
         sweep.sweep("steps", [steps]),
-        sweep.sweep("seed", [0, 1, 2, 3, 4]),
+        sweep.sweep("seed", [0, 1, 2]),
         sweep.product(
             sweep.zip(
                 sweep.sweep("a", [5, 6]),

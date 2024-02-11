@@ -27,6 +27,7 @@ def run_work_unit(
     save_interval_steps: int = 10,
     max_to_keep: int = 1,
     print_interval: Optional[int] = 300,
+    use_jit: bool = True,
 ) -> None:
     """Runs a work unit.
 
@@ -56,6 +57,7 @@ def run_work_unit(
         save_interval_steps: The interval at which checkpoints are saved to `wid_path`.
         max_to_keep: The maximum number of checkpoints to keep.
         print_interval: Optional, the seconds elapsed between updates.
+        use_jit: If `True`, the entire optimization step will be jit-compiled.
     """
     if os.path.isfile(f"{wid_path}/completed.txt"):
         return
@@ -82,7 +84,12 @@ def run_work_unit(
         scalars = {}
         champion_result = {}
 
-    def step_fn(state: Any) -> Any:
+    def _log_scalar(name: str, value: float) -> None:
+        if name not in scalars:
+            scalars[name] = jnp.zeros((0,))
+        scalars[name] = jnp.concatenate([scalars[name], jnp.asarray([float(value)])])
+
+    def _step_fn(state: Any) -> Any:
         def loss_fn(
             params: Any,
         ) -> Tuple[jnp.ndarray, Any]:
@@ -98,23 +105,16 @@ def run_work_unit(
         )(params)
         state = optimizer.update(grad=grad, value=value, params=params, state=state)
         return state, (params, value, response, distance, metrics, aux)
-
-    try:
-        step_fn = jax.jit(step_fn).lower(state).compile()
-    except jax.errors.UnexpectedTracerError:
-        pass
-
-    def _log_scalar(name: str, value: float) -> None:
-        if name not in scalars:
-            scalars[name] = jnp.zeros((0,))
-        scalars[name] = jnp.concatenate([scalars[name], jnp.asarray([float(value)])])
+    
+    if use_jit:
+        _step_fn = jax.jit(_step_fn)
 
     last_print_time = time.time()
     last_print_step = latest_step
 
     for i in range(latest_step + 1, steps):
         t0 = time.time()
-        state, (params, loss_value, response, distance, metrics, aux) = step_fn(state)
+        state, (params, loss_value, response, distance, metrics, aux) = _step_fn(state)
         t1 = time.time()
 
         if print_interval is not None and (
