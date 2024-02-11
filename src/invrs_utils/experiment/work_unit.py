@@ -23,6 +23,7 @@ def run_work_unit(
     steps: int,
     stop_on_zero_distance: bool,
     stop_requires_binary: bool,
+    champion_requires_binary: bool = True,
     save_interval_steps: int = 10,
     max_to_keep: int = 1,
     print_interval: Optional[int] = 300,
@@ -49,6 +50,9 @@ def run_work_unit(
             criteria.
         stop_requires_binary: Determines if density arrays in the design must be binary
             for early stopping on zero distance.
+        champion_requires_binary: Determines if a new champion must have a greater
+            degree of binarization than the previous champion. If `True`, champion
+            results tend to become more binary, even at the cost of performance (loss).
         save_interval_steps: The interval at which checkpoints are saved to `wid_path`.
         max_to_keep: The maximum number of checkpoints to keep.
         print_interval: Optional, the seconds elapsed between updates.
@@ -129,25 +133,19 @@ def run_work_unit(
         for name, metric_value in metrics.items():
             if _is_scalar(metric_value):
                 _log_scalar(name, metric_value)
-        binarization = metrics["binarization_degree"]
-        if (
-            i == 0
-            or (binarization is None and loss_value < champion_result["loss"])
-            or (
-                binarization is not None
-                and (
-                    binarization > champion_result["binarization_degree"]
-                    or (
-                        binarization == champion_result["binarization_degree"]
-                        and loss_value < champion_result["loss"]
-                    )
-                )
-            )
-        ):
+
+        is_new_champion = _is_new_champion(
+            step=i,
+            loss_value=loss_value,
+            binarization=metrics["binarization_degree"],
+            champion_result=champion_result,
+            requires_binary=champion_requires_binary,
+        )
+        if is_new_champion:
             champion_result = {
                 "step": i,
                 "loss": loss_value,
-                "binarization_degree": binarization,
+                "binarization_degree": metrics["binarization_degree"],
                 "params": params,
                 "response": response,
                 "distance": distance,
@@ -166,7 +164,9 @@ def run_work_unit(
         if (
             stop_on_zero_distance
             and distance <= 0
-            and (binarization in (1, None) or not stop_requires_binary)
+            and (
+                metrics["binarization_degree"] in (1, None) or not stop_requires_binary
+            )
         ):
             break
 
@@ -175,6 +175,23 @@ def run_work_unit(
         os.utime(wid_path, None)
 
     print(f"{wid_path} finished")
+
+
+def _is_new_champion(
+    step: int,
+    loss_value: float,
+    binarization: Optional[float],
+    champion_result: Dict[str, Any],
+    requires_binary: bool,
+) -> bool:
+    """Determine whether a new champion is to be crowned."""
+    if step == 0:
+        return True
+    if binarization is None or not requires_binary:
+        return loss_value < champion_result["loss"]
+    if binarization > champion_result["binarization_degree"]:
+        return True
+    return loss_value < champion_result["loss"]
 
 
 def _is_scalar(x: Any) -> bool:
