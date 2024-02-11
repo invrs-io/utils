@@ -69,13 +69,23 @@ def run_work_unit(
         path=wid_path, save_interval_steps=save_interval_steps, max_to_keep=max_to_keep
     )
 
-    @jax.jit
-    def step_fn(state: Any):
+    if mngr.latest_step() is not None:
+        latest_step: int = mngr.latest_step()  # type: ignore[assignment]
+        latest_checkpoint = mngr.restore(latest_step)
+        state = latest_checkpoint["state"]
+        scalars = latest_checkpoint["scalars"]
+        champion_result = latest_checkpoint["champion_result"]
+    else:
+        latest_step = -1  # Next step is `0`.
+        latent_params = challenge.component.init(key)
+        state = optimizer.init(latent_params)
+        scalars = {}
+        champion_result = {}
+
+    def step_fn(state: Any) -> Any:
         def loss_fn(
             params: Any,
-        ) -> Tuple[
-            jnp.ndarray, Tuple[Any, jnp.ndarray, Dict[str, Any], Dict[str, Any]]
-        ]:
+        ) -> Tuple[jnp.ndarray, Any]:
             response, aux = challenge.component.response(params)
             loss = challenge.loss(response)
             distance = challenge.distance_to_target(response)
@@ -89,18 +99,10 @@ def run_work_unit(
         state = optimizer.update(grad=grad, value=value, params=params, state=state)
         return state, (params, value, response, distance, metrics, aux)
 
-    if mngr.latest_step() is not None:
-        latest_step: int = mngr.latest_step()  # type: ignore[assignment]
-        latest_checkpoint = mngr.restore(latest_step)
-        state = latest_checkpoint["state"]
-        scalars = latest_checkpoint["scalars"]
-        champion_result = latest_checkpoint["champion_result"]
-    else:
-        latest_step = -1  # Next step is `0`.
-        latent_params = challenge.component.init(key)
-        state = optimizer.init(latent_params)
-        scalars = {}
-        champion_result = {}
+    try:
+        step_fn = jax.jit(step_fn).lower(state).compile()
+    except jax.errors.UnexpectedTracerError:
+        pass
 
     def _log_scalar(name: str, value: float) -> None:
         if name not in scalars:
