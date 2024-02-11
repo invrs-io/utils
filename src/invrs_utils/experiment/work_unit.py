@@ -105,7 +105,7 @@ def run_work_unit(
         )(params)
         state = optimizer.update(grad=grad, value=value, params=params, state=state)
         return state, (params, value, response, distance, metrics, aux)
-    
+
     if use_jit:
         _step_fn = jax.jit(_step_fn)
 
