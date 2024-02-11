@@ -80,8 +80,7 @@ class WorkUnitTest(unittest.TestCase):
                 {
                     "loss",
                     "distance",
-                    "simulation_time",
-                    "update_time",
+                    "step_time",
                 },
             ],
             [
@@ -89,8 +88,7 @@ class WorkUnitTest(unittest.TestCase):
                 {
                     "loss",
                     "distance",
-                    "simulation_time",
-                    "update_time",
+                    "step_time",
                     "binarization_degree",
                 },
             ],
