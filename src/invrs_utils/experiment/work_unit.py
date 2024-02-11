@@ -69,22 +69,23 @@ def run_work_unit(
         path=wid_path, save_interval_steps=save_interval_steps, max_to_keep=max_to_keep
     )
 
-    def loss_fn(
-        params: Any,
-    ) -> Tuple[jnp.ndarray, Tuple[Any, jnp.ndarray, Dict[str, Any], Dict[str, Any]]]:
-        response, aux = challenge.component.response(params)
-        loss = challenge.loss(response)
-        distance = challenge.distance_to_target(response)
-        metrics = challenge.metrics(response, params, aux)
-        return loss, (response, distance, metrics, aux)
-
-    # Use a jit-compiled value-and-grad function, if the challenge supports it.
-    value_and_grad_fn = jax.value_and_grad(loss_fn, has_aux=True)
-    try:
-        dummy_params = challenge.component.init(jax.random.PRNGKey(0))
-        value_and_grad_fn = jax.jit(value_and_grad_fn).lower(dummy_params).compile()
-    except jax.errors.UnexpectedTracerError:
-        pass
+    @jax.jit
+    def step_fn(state: Any):
+        def loss_fn(
+            params: Any,
+        ) -> Tuple[jnp.ndarray, Tuple[Any, jnp.ndarray, Dict[str, Any], Dict[str, Any]]]:
+            response, aux = challenge.component.response(params)
+            loss = challenge.loss(response)
+            distance = challenge.distance_to_target(response)
+            metrics = challenge.metrics(response, params, aux)
+            return loss, (response, distance, metrics, aux)
+        
+        params = optimizer.params(state)
+        (value, (response, distance, metrics, aux)), grad = jax.value_and_grad(
+            loss_fn, has_aux=True
+        )(params)
+        state = optimizer.update(grad=grad, value=value, params=params, state=state)
+        return state, (params, value, response, distance, metrics, aux)
 
     if mngr.latest_step() is not None:
         latest_step: int = mngr.latest_step()  # type: ignore[assignment]
@@ -108,11 +109,8 @@ def run_work_unit(
     last_print_step = latest_step
 
     for i in range(latest_step + 1, steps):
-        params = optimizer.params(state)
         t0 = time.time()
-        (loss_value, (response, distance, metrics, aux)), grad = value_and_grad_fn(
-            params
-        )
+        state, (params, loss_value, response, distance, metrics, aux) = step_fn(state)
         t1 = time.time()
 
         if print_interval is not None and (
@@ -128,8 +126,7 @@ def run_work_unit(
 
         _log_scalar("loss", loss_value)
         _log_scalar("distance", distance)
-        _log_scalar("simulation_time", t1 - t0)
-        _log_scalar("update_time", time.time() - t0)
+        _log_scalar("step_time", t1 - t0)
         for name, metric_value in metrics.items():
             if _is_scalar(metric_value):
                 _log_scalar(name, metric_value)
@@ -157,9 +154,6 @@ def run_work_unit(
             "scalars": scalars,
             "champion_result": champion_result,
         }
-        state = optimizer.update(
-            value=loss_value, params=params, grad=grad, state=state
-        )
         mngr.save(i, ckpt_dict)
         if (
             stop_on_zero_distance
