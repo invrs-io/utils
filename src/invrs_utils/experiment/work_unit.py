@@ -24,7 +24,7 @@ def run_work_unit(
     stop_on_zero_distance: bool,
     stop_requires_binary: bool,
     champion_requires_binary: bool = True,
-    response_kwargs_fn: Callable[[jax.Array], Dict[str, Any]] = lambda _: {},
+    response_kwargs_fn: Callable[[int], Dict[str, Any]] = lambda _: {},
     save_interval_steps: int = 10,
     max_to_keep: int = 1,
     print_interval: Optional[int] = 300,
@@ -56,8 +56,8 @@ def run_work_unit(
             degree of binarization than the previous champion. If `True`, champion
             results tend to become more binary, even at the cost of performance (loss).
         response_kwargs_fn: Function which computes keyword arguments to be supplied to
-            the `challenge.component.response` method, given a step-dependent random
-            key. This enables e.g. evaluation with random wavelengths at each step.
+            the `challenge.component.response` method, given the step number. This
+            enables e.g. evaluation with random wavelengths at each step.
         save_interval_steps: The interval at which checkpoints are saved to `wid_path`.
         max_to_keep: The maximum number of checkpoints to keep.
         print_interval: Optional, the seconds elapsed between updates.
@@ -93,9 +93,9 @@ def run_work_unit(
             scalars[name] = jnp.zeros((0,))
         scalars[name] = jnp.concatenate([scalars[name], jnp.asarray([float(value)])])
 
-    def _step_fn(key: jax.Array, state: Any) -> Any:
+    def _step_fn(step: int, state: Any) -> Any:
         # Compute kwargs that override the default response calculation for this step.
-        response_kwargs = response_kwargs_fn(key)
+        response_kwargs = response_kwargs_fn(step)
 
         def loss_fn(
             params: Any,
@@ -135,7 +135,7 @@ def run_work_unit(
     for i in range(latest_step + 1, steps):
         t0 = time.time()
         state, (params, loss_value, response, distance, metrics, aux) = _step_fn(
-            key=jax.random.fold_in(key, i), state=state
+            step=i, state=state
         )
         t1 = time.time()
 
