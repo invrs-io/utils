@@ -3,5 +3,5 @@
 Copyright (c) 2023 The INVRS-IO authors.
 """
 
-__version__ = "v0.5.1"
+__version__ = "v0.6.0"
 __author__ = "Martin F. Schubert <mfschubert@gmail.com>"
