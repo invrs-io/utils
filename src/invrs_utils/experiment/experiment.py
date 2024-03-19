@@ -7,12 +7,12 @@ import multiprocessing as mp
 import random
 import time
 import traceback
-from typing import Any, Callable, Dict, List, Tuple
+from typing import Any, Callable, Dict, Sequence, Tuple
 
 
 def run_experiment(
     experiment_path: str,
-    sweeps: List[Dict[str, Any]],
+    sweeps: Sequence[Dict[str, Any]],
     work_unit_fn: Callable[[Any], Any],
     workers: int,
     dry_run: bool,
