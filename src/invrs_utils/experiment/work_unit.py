@@ -9,6 +9,7 @@ from typing import Any, Callable, Dict, Optional, Protocol, Tuple
 
 import jax
 import jax.numpy as jnp
+from jax import tree_util
 
 from invrs_utils.experiment import checkpoint
 
@@ -78,7 +79,14 @@ def run_work_unit(
     if mngr.latest_step() is not None:
         latest_step: int = mngr.latest_step()  # type: ignore[assignment]
         latest_checkpoint = mngr.restore(latest_step)
-        state = latest_checkpoint["state"]
+        # When saving/loading checkpoints, tuples are generally converted to lists. To
+        # ensure that the restored state treedef matches the original treedef, create
+        # a dummy state and use its treedef with the leaves from the restored state.
+        dummy_params = challenge.component.init(key)
+        treedef = tree_util.tree_structure(optimizer.init(dummy_params))
+        state = tree_util.tree_unflatten(
+            treedef, tree_util.tree_leaves(latest_checkpoint["state"])
+        )
         scalars = latest_checkpoint["scalars"]
         champion_result = latest_checkpoint["champion_result"]
     else:
