@@ -13,7 +13,7 @@ import jax
 import numpy as onp
 import pandas as pd
 
-from invrs_utils.experiment import checkpoint
+from invrs_utils.experiment import checkpoint, experiment
 
 WID = "wid"
 REPLICA = "replica"
@@ -49,8 +49,6 @@ PREFIX_WID_COL = "wid."
 
 PREFIX_WID_PATH = "wid_"
 PREFIX_CHECKPOINT = "checkpoint_"
-FNAME_WID_CONFIG = "setup.json"
-FNAME_COMPLETED = "completed.txt"
 
 
 def summarize_experiment(
@@ -170,7 +168,7 @@ def summarize_work_unit(
 
 def checkpoint_exists(wid_path: str) -> bool:
     """Return `True` if a checkpoint file exists."""
-    if not os.path.isfile(f"{wid_path}/{FNAME_WID_CONFIG}"):
+    if not os.path.isfile(f"{wid_path}/{experiment.FNAME_WID_CONFIG}"):
         return False
     if not glob.glob(f"{wid_path}/{PREFIX_CHECKPOINT}*.json"):
         return False
@@ -190,10 +188,10 @@ def load_work_unit_scalars(wid_path: str) -> Tuple[Dict, pd.DataFrame]:
     assert checkpoint_exists(wid_path)
     latest_step: int = checkpoint.latest_step(wid_path)  # type: ignore[assignment]
 
-    with open(f"{wid_path}/{FNAME_WID_CONFIG}") as f:
+    with open(f"{wid_path}/{experiment.FNAME_WID_CONFIG}") as f:
         wid_config = json.load(f)
     wid_config[WID] = wid_path.split("/")[-1]
-    wid_config[COMPLETED] = os.path.isfile(f"{wid_path}/{FNAME_COMPLETED}")
+    wid_config[COMPLETED] = os.path.isfile(f"{wid_path}/{experiment.FNAME_COMPLETED}")
     wid_config = flatten_nested(wid_config)
     wid_config[LATEST_STEP] = latest_step
 
@@ -207,7 +205,7 @@ def load_work_unit_scalars(wid_path: str) -> Tuple[Dict, pd.DataFrame]:
     scalars = latest_checkpoint[SCALARS]
     scalars_shape = list(scalars.values())[0].shape
     num_steps = scalars_shape[0]
-    num_replicas = None if len(scalars_shape) == 1 else scalars_shape[1]
+    num_replicas = 1 if len(scalars_shape) == 1 else scalars_shape[1]
 
     replica_scalars = {}
     for key, value in scalars.items():

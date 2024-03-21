@@ -12,6 +12,10 @@ import traceback
 from typing import Any, Callable, Dict, Sequence, Tuple
 
 
+FNAME_WID_CONFIG = "setup.json"
+FNAME_COMPLETED = "completed.txt"
+
+
 def run_experiment(
     experiment_path: str,
     sweeps: Sequence[Dict[str, Any]],
@@ -70,11 +74,11 @@ def work_unit_fn(fn: Any) -> Callable[[Tuple[str, Dict[str, Any]]], Any]:
         """Wraps `run_work_unit` so that it can be called by `map`."""
         wid_path, kwargs = path_and_kwargs
 
-        if os.path.isfile(f"{wid_path}/completed.txt"):
+        if os.path.isfile(f"{wid_path}/{FNAME_COMPLETED}"):
             return
         if not os.path.exists(wid_path):
             os.makedirs(wid_path)
-        with open(f"{wid_path}/setup.json", "w") as f:
+        with open(f"{wid_path}/{FNAME_WID_CONFIG}", "w") as f:
             json.dump(kwargs, f, indent=4)
 
         try:
