@@ -3,6 +3,7 @@
 Copyright (c) 2023 The INVRS-IO authors.
 """
 
+import functools
 import os
 import time
 from typing import Any, Callable, Dict, Optional, Protocol, Tuple
@@ -29,7 +30,7 @@ def run_work_unit(
     save_interval_steps: int = 10,
     max_to_keep: int = 1,
     print_interval: Optional[int] = 300,
-    use_jit: bool = True,
+    num_replicas: int = 1,
 ) -> None:
     """Runs a work unit.
 
@@ -62,7 +63,8 @@ def run_work_unit(
         save_interval_steps: The interval at which checkpoints are saved to `wid_path`.
         max_to_keep: The maximum number of checkpoints to keep.
         print_interval: Optional, the seconds elapsed between updates.
-        use_jit: If `True`, the entire optimization step will be jit-compiled.
+        num_replicas: The number of replicas for the work unit. Each replica is
+            identical except for the random seed used to generate initial parameters.
     """
     if os.path.isfile(f"{wid_path}/completed.txt"):
         return
@@ -76,13 +78,16 @@ def run_work_unit(
         path=wid_path, save_interval_steps=save_interval_steps, max_to_keep=max_to_keep
     )
 
+    keys = jax.random.split(key, num_replicas)
+    del key
+
     if mngr.latest_step() is not None:
         latest_step: int = mngr.latest_step()  # type: ignore[assignment]
         latest_checkpoint = mngr.restore(latest_step)
         # When saving/loading checkpoints, tuples are generally converted to lists. To
         # ensure that the restored state treedef matches the original treedef, create
         # a dummy state and use its treedef with the leaves from the restored state.
-        dummy_params = challenge.component.init(key)
+        dummy_params = jax.vmap(challenge.component.init)(keys)
         treedef = tree_util.tree_structure(optimizer.init(dummy_params))
         state = tree_util.tree_unflatten(
             treedef, tree_util.tree_leaves(latest_checkpoint["state"])
@@ -91,23 +96,16 @@ def run_work_unit(
         champion_result = latest_checkpoint["champion_result"]
     else:
         latest_step = -1  # Next step is `0`.
-        latent_params = challenge.component.init(key)
-        state = optimizer.init(latent_params)
+        latent_params = jax.vmap(challenge.component.init)(keys)
+        state = jax.vmap(optimizer.init)(latent_params)
         scalars = {}
         champion_result = {}
 
-    def _log_scalar(name: str, value: float) -> None:
-        if name not in scalars:
-            scalars[name] = jnp.zeros((0,))
-        scalars[name] = jnp.concatenate([scalars[name], jnp.asarray([float(value)])])
-
+    @jax.jit
+    @functools.partial(jax.vmap, in_axes=(None, 0))
     def _step_fn(step: int, state: Any) -> Any:
-        # Compute kwargs that override the default response calculation for this step.
-        response_kwargs = response_kwargs_fn(step)
-
-        def loss_fn(
-            params: Any,
-        ) -> Tuple[jnp.ndarray, Any]:
+        def loss_fn(params: Any) -> Tuple[jnp.ndarray, Any]:
+            response_kwargs = response_kwargs_fn(step)
             response, aux = challenge.component.response(params, **response_kwargs)
             loss = challenge.loss(response)
             distance = challenge.distance_to_target(response)
@@ -134,17 +132,21 @@ def run_work_unit(
         )
         return state, (params, value, response, distance, metrics, aux)
 
-    if use_jit:
-        _step_fn = jax.jit(_step_fn)
-
     last_print_time = time.time()
     last_print_step = latest_step
 
+    def _log_scalar(name: str, value: jnp.ndarray) -> None:
+        if name not in scalars:
+            assert value.ndim == 1
+            scalars[name] = jnp.zeros((0, value.size))
+        scalars[name] = jnp.concatenate([scalars[name], value[jnp.newaxis, :]])
+
     for i in range(latest_step + 1, steps):
         t0 = time.time()
-        state, (params, loss_value, response, distance, metrics, aux) = _step_fn(
-            step=i, state=state
-        )
+        (
+            state,
+            (params, loss_value, response, distance, metrics, aux),
+        ) = _step_fn(i, state)
         t1 = time.time()
 
         if print_interval is not None and (
@@ -152,29 +154,21 @@ def run_work_unit(
         ):
             print(
                 f"{wid_path} is now at step {i} "
-                f"({(time.time() - last_print_time) / (i - last_print_step):.1f}"
-                f"s / step)"
+                f"({(t1 - last_print_time) / (i - last_print_step):.1f}s / step)"
             )
             last_print_time = time.time()
             last_print_step = i
 
         _log_scalar("loss", loss_value)
         _log_scalar("distance", distance)
-        _log_scalar("step_time", t1 - t0)
+        _log_scalar("step_time", jnp.full((num_replicas,), t1 - t0))
         for name, metric_value in metrics.items():
-            if _is_scalar(metric_value):
+            if _is_scalar(metric_value, num_replicas):
                 _log_scalar(name, metric_value)
 
-        is_new_champion = _is_new_champion(
-            step=i,
-            loss_value=loss_value,
-            binarization=metrics["binarization_degree"],
-            champion_result=champion_result,
-            requires_binary=champion_requires_binary,
-        )
-        if is_new_champion:
-            champion_result = {
-                "step": i,
+        champion_result = _update_champion_result(
+            candidate={
+                "step": jnp.full((num_replicas,), i),
                 "loss": loss_value,
                 "binarization_degree": metrics["binarization_degree"],
                 "params": params,
@@ -182,7 +176,10 @@ def run_work_unit(
                 "distance": distance,
                 "metrics": metrics,
                 "aux": aux,
-            }
+            },
+            champion=champion_result,
+            requires_binary=champion_requires_binary,
+        )
         ckpt_dict = {
             "state": state,
             "scalars": scalars,
@@ -191,9 +188,11 @@ def run_work_unit(
         mngr.save(i, ckpt_dict)
         if (
             stop_on_zero_distance
-            and distance <= 0
+            and jnp.all(champion_result["distance"] <= 0)
             and (
-                metrics["binarization_degree"] in (1, None) or not stop_requires_binary
+                not stop_requires_binary
+                or champion_result["metrics"]["binarization_degree"] is None
+                or jnp.all(champion_result["metrics"]["binarization_degree"] == 1)
             )
         ):
             break
@@ -205,30 +204,47 @@ def run_work_unit(
     print(f"{wid_path} finished")
 
 
-def _is_new_champion(
-    step: int,
-    loss_value: float,
-    binarization: Optional[float],
-    champion_result: Dict[str, Any],
+def _update_champion_result(
+    candidate: Dict[str, Any],
+    champion: Dict[str, Any],
     requires_binary: bool,
-) -> bool:
-    """Determine whether a new champion is to be crowned."""
-    if step == 0:
-        return True
-    if binarization is None or not requires_binary:
-        return loss_value < champion_result["loss"]
-    if binarization > champion_result["binarization_degree"]:
-        return True
-    return loss_value < champion_result["loss"]
+) -> Dict[str, Any]:
+    """Updates champion results."""
+    if candidate["step"][0] == 0:
+        return candidate
+
+    assert candidate["loss"].ndim == 1
+    num_replicas = candidate["loss"].size
+
+    is_new_champion = []
+    for i in range(num_replicas):
+        # If binarization is not required or relevant, new champ if loss is lower.
+        if candidate["binarization_degree"] is None or not requires_binary:
+            is_new_champion.append(candidate["loss"][i] < champion["loss"][i])
+        # If binarization is required, new champ if binarization is greater.
+        elif candidate["binarization_degree"][i] > champion["binarization_degree"][i]:
+            is_new_champion.append(True)
+        # If binarization is required, no new champ if binarization is lesser.
+        elif candidate["binarization_degree"][i] < champion["binarization_degree"][i]:
+            is_new_champion.append(False)
+        # If binarization is exactly equal, new champ if loss is lower.
+        else:
+            is_new_champion.append(candidate["loss"][i] < champion["loss"][i])
+
+    is_new_champion_tree = tree_util.tree_unflatten(
+        tree_util.tree_structure(candidate),
+        leaves=[
+            jnp.asarray(is_new_champion).reshape([num_replicas] + [1] * (leaf.ndim - 1))
+            for leaf in tree_util.tree_leaves(candidate)
+        ],
+    )
+
+    return tree_util.tree_map(jnp.where, is_new_champion_tree, candidate, champion)
 
 
-def _is_scalar(x: Any) -> bool:
-    """Returns `True` if `x` is a scalar, i.e. it can be cast as a float."""
-    try:
-        float(x)
-        return True
-    except Exception:
-        return False
+def _is_scalar(x: Any, num_replicas: int) -> bool:
+    """Returns `True` if `x` is a scalar, i.e. a singleton for each replica."""
+    return isinstance(x, jnp.ndarray) and x.shape == (num_replicas,)
 
 
 # -----------------------------------------------------------------------------

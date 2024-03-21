@@ -3,7 +3,9 @@
 Copyright (c) 2023 The INVRS-IO authors.
 """
 
+import json
 import multiprocessing as mp
+import os
 import random
 import time
 import traceback
@@ -67,8 +69,18 @@ def work_unit_fn(fn: Any) -> Callable[[Tuple[str, Dict[str, Any]]], Any]:
     def wrapped_fn(path_and_kwargs: Tuple[str, Dict[str, Any]]) -> None:
         """Wraps `run_work_unit` so that it can be called by `map`."""
         wid_path, kwargs = path_and_kwargs
+
+        if os.path.isfile(f"{wid_path}/completed.txt"):
+            return
+        if not os.path.exists(wid_path):
+            os.makedirs(wid_path)
+        with open(f"{wid_path}/setup.json", "w") as f:
+            json.dump(kwargs, f, indent=4)
+
         try:
             return fn(wid_path=wid_path, **kwargs)
+        except KeyboardInterrupt as e:
+            raise e
         except Exception as e:
             print(f"Exception: {wid_path}")
             tb = "".join(traceback.format_tb(e.__traceback__))
