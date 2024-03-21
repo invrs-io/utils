@@ -4,8 +4,6 @@ Copyright (c) 2023 The INVRS-IO authors.
 """
 
 import glob
-import json
-import os
 import tempfile
 import unittest
 
@@ -16,9 +14,7 @@ from invrs_utils.experiment import experiment
 
 @experiment.work_unit_fn
 def work_unit_fn(wid_path, a, b, c, d):
-    os.mkdir(wid_path)
-    with open(f"{wid_path}/data.json", "w") as f:
-        json.dump({"a": a, "b": b, "c": c, "d": d}, f)
+    pass
 
 
 class ExperimentTest(unittest.TestCase):
@@ -51,10 +47,10 @@ class ExperimentTest(unittest.TestCase):
             self.assertSequenceEqual(
                 set(glob.glob(f"{experiment_path}/*/*")),
                 {
-                    f"{experiment_path}/wid_0000/data.json",
-                    f"{experiment_path}/wid_0001/data.json",
-                    f"{experiment_path}/wid_0002/data.json",
-                    f"{experiment_path}/wid_0003/data.json",
-                    f"{experiment_path}/wid_0004/data.json",
+                    f"{experiment_path}/wid_0000/setup.json",
+                    f"{experiment_path}/wid_0001/setup.json",
+                    f"{experiment_path}/wid_0002/setup.json",
+                    f"{experiment_path}/wid_0003/setup.json",
+                    f"{experiment_path}/wid_0004/setup.json",
                 },
             )

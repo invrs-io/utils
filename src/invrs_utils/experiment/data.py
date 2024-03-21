@@ -13,9 +13,11 @@ import jax
 import numpy as onp
 import pandas as pd
 
-from invrs_utils.experiment import checkpoint
+from invrs_utils.experiment import checkpoint, experiment
 
 WID = "wid"
+REPLICA = "replica"
+STEP = "step"
 LATEST_STEP = "latest_step"
 LATEST_TIME_UTC = "latest_time_utc"
 TIME_FORMAT = "%Y-%m-%d %H:%M:%S"
@@ -47,8 +49,6 @@ PREFIX_WID_COL = "wid."
 
 PREFIX_WID_PATH = "wid_"
 PREFIX_CHECKPOINT = "checkpoint_"
-FNAME_WID_CONFIG = "setup.json"
-FNAME_COMPLETED = "completed.txt"
 
 
 def summarize_experiment(
@@ -72,11 +72,14 @@ def summarize_experiment(
     for wid_path in wid_paths:
         if checkpoint_exists(wid_path):
             wid_config, wid_df = load_work_unit_scalars(wid_path)
-            dfs.append(
-                summarize_work_unit(
-                    wid_config, wid_df, summarize_intervals=summarize_intervals
+            for replica_id, wid_replica_df in wid_df.groupby(REPLICA):
+                replica_summary_df = summarize_work_unit(
+                    wid_config,
+                    wid_replica_df,
+                    summarize_intervals=summarize_intervals,
                 )
-            )
+                replica_summary_df[f"{PREFIX_WID_COL}{REPLICA}"] = replica_id
+                dfs.append(replica_summary_df)
     return pd.concat(dfs)
 
 
@@ -90,10 +93,10 @@ def summarize_work_unit(
     For each summary interval, the following quantities are computed:
       - The minimum loss over the interval
       - The mean loss over the interval
-      - The 10th percentile of loss over the interal
+      - The 5th, 10th, 25th, and 50th percentile of loss over the interal
       - The minimum distance over the interval
       - The mean distance over the interval
-      - The 10th percentile of distance over the interval
+      - The 5th, 10th, 25th, and 50th percentile of distance over the interval
       - The number of steps where the distance was zero or negative
       - The first step (within each interval) where the distance is zero or negative
 
@@ -165,7 +168,7 @@ def summarize_work_unit(
 
 def checkpoint_exists(wid_path: str) -> bool:
     """Return `True` if a checkpoint file exists."""
-    if not os.path.isfile(f"{wid_path}/{FNAME_WID_CONFIG}"):
+    if not os.path.isfile(f"{wid_path}/{experiment.FNAME_WID_CONFIG}"):
         return False
     if not glob.glob(f"{wid_path}/{PREFIX_CHECKPOINT}*.json"):
         return False
@@ -185,10 +188,10 @@ def load_work_unit_scalars(wid_path: str) -> Tuple[Dict, pd.DataFrame]:
     assert checkpoint_exists(wid_path)
     latest_step: int = checkpoint.latest_step(wid_path)  # type: ignore[assignment]
 
-    with open(f"{wid_path}/{FNAME_WID_CONFIG}") as f:
+    with open(f"{wid_path}/{experiment.FNAME_WID_CONFIG}") as f:
         wid_config = json.load(f)
     wid_config[WID] = wid_path.split("/")[-1]
-    wid_config[COMPLETED] = os.path.isfile(f"{wid_path}/{FNAME_COMPLETED}")
+    wid_config[COMPLETED] = os.path.isfile(f"{wid_path}/{experiment.FNAME_COMPLETED}")
     wid_config = flatten_nested(wid_config)
     wid_config[LATEST_STEP] = latest_step
 
@@ -198,7 +201,26 @@ def load_work_unit_scalars(wid_path: str) -> Tuple[Dict, pd.DataFrame]:
     )
 
     latest_checkpoint = checkpoint.load(wid_path, latest_step)
-    df = pd.DataFrame.from_dict(latest_checkpoint[SCALARS])
+
+    scalars = latest_checkpoint[SCALARS]
+    scalars_shape = list(scalars.values())[0].shape
+    num_steps = scalars_shape[0]
+    num_replicas = 1 if len(scalars_shape) == 1 else scalars_shape[1]
+
+    replica_scalars = {}
+    for key, value in scalars.items():
+        assert value.shape == scalars_shape
+        replica_scalars[key] = value.flatten()
+
+    replica_scalars[REPLICA] = onp.tile(
+        onp.arange(num_replicas)[onp.newaxis, :], (num_steps, 1)
+    ).flatten()
+
+    replica_scalars[STEP] = onp.tile(
+        onp.arange(num_steps)[:, onp.newaxis], (1, num_replicas)
+    ).flatten()
+
+    df = pd.DataFrame.from_dict(replica_scalars)
     return wid_config, df
 
 

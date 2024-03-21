@@ -13,6 +13,7 @@ import unittest
 import invrs_opt
 import jax
 import jax.numpy as jnp
+import numpy as onp
 from invrs_gym.challenges import base as challenge_base
 from parameterized import parameterized
 from totypes import types
@@ -82,6 +83,7 @@ class WorkUnitTest(unittest.TestCase):
                     "distance",
                     "step_time",
                 },
+                1,
             ],
             [
                 dummy_challenge_with_density,
@@ -91,10 +93,21 @@ class WorkUnitTest(unittest.TestCase):
                     "step_time",
                     "binarization_degree",
                 },
+                1,
+            ],
+            [
+                dummy_challenge_with_density,
+                {
+                    "loss",
+                    "distance",
+                    "step_time",
+                    "binarization_degree",
+                },
+                10,
             ],
         ]
     )
-    def test_optimize(self, challenge_fn, expected_scalars):
+    def test_optimize(self, challenge_fn, expected_scalars, num_replicas):
         with tempfile.TemporaryDirectory() as wid_path:
 
             def _run_work_unit():
@@ -116,6 +129,7 @@ class WorkUnitTest(unittest.TestCase):
                     stop_requires_binary=True,
                     save_interval_steps=10,
                     max_to_keep=3,
+                    num_replicas=num_replicas,
                 )
 
             _run_work_unit()
@@ -135,12 +149,19 @@ class WorkUnitTest(unittest.TestCase):
                 set(ckpt.keys()), {"state", "scalars", "champion_result"}
             )
             self.assertSequenceEqual(set(ckpt["scalars"].keys()), expected_scalars)
-            self.assertEqual(
-                jnp.amin(ckpt["scalars"]["loss"]), ckpt["champion_result"]["loss"]
+            onp.testing.assert_array_equal(
+                jnp.amin(ckpt["scalars"]["loss"], axis=0),
+                ckpt["champion_result"]["loss"],
             )
 
-    @parameterized.expand([[dummy_challenge], [dummy_challenge_with_density]])
-    def test_optimize_with_early_stopping(self, challenge_fn):
+    @parameterized.expand(
+        [
+            [dummy_challenge, 1],
+            [dummy_challenge_with_density, 1],
+            [dummy_challenge_with_density, 10],
+        ]
+    )
+    def test_optimize_with_early_stopping(self, challenge_fn, num_replicas):
         with tempfile.TemporaryDirectory() as wid_path:
 
             def _run_work_unit():
@@ -162,6 +183,7 @@ class WorkUnitTest(unittest.TestCase):
                     stop_requires_binary=True,
                     save_interval_steps=10,
                     max_to_keep=3,
+                    num_replicas=num_replicas,
                 )
 
             _run_work_unit()
@@ -177,6 +199,7 @@ class WorkUnitTest(unittest.TestCase):
                 },
             )
             ckpt = checkpoint.load(wid_path, step=latest_step)
-            self.assertEqual(
-                jnp.amin(ckpt["scalars"]["loss"]), ckpt["champion_result"]["loss"]
+            onp.testing.assert_array_equal(
+                jnp.amin(ckpt["scalars"]["loss"], axis=0),
+                ckpt["champion_result"]["loss"],
             )
