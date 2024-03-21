@@ -1,4 +1,4 @@
-"""Functions related an optimization experiment.
+"""Functions that enable running an optimization experiment.
 
 Copyright (c) 2023 The INVRS-IO authors.
 """
