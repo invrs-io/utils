@@ -84,14 +84,7 @@ def run_work_unit(
     if mngr.latest_step() is not None:
         latest_step: int = mngr.latest_step()  # type: ignore[assignment]
         latest_checkpoint = mngr.restore(latest_step)
-        # When saving/loading checkpoints, tuples are generally converted to lists. To
-        # ensure that the restored state treedef matches the original treedef, create
-        # a dummy state and use its treedef with the leaves from the restored state.
-        dummy_params = jax.vmap(challenge.component.init)(keys)
-        treedef = tree_util.tree_structure(optimizer.init(dummy_params))
-        state = tree_util.tree_unflatten(
-            treedef, tree_util.tree_leaves(latest_checkpoint["state"])
-        )
+        state = latest_checkpoint["state"]
         scalars = latest_checkpoint["scalars"]
         champion_result = latest_checkpoint["champion_result"]
     else:
@@ -117,18 +110,18 @@ def run_work_unit(
             loss_fn, has_aux=True
         )(params)
 
-        # It can occur that even a properly-configured challenge yields a `nan` loss;
-        # in these cases, do not update the state.
+        # Compute updated state, but return previous state if loss is `nan`. Note that
+        # we must ensure previous state has the proper tree structure, which may not
+        # be the case if e.g. it was restored from a checkpoint.
+        updated_state = optimizer.update(
+            grad=grad, value=value, params=params, state=state
+        )
+        previous_state = tree_util.tree_unflatten(
+            treedef=tree_util.tree_structure(updated_state),
+            leaves=tree_util.tree_leaves(state),
+        )
         state = jax.lax.cond(
-            jnp.isnan(value),
-            lambda grad, value, params, state: state,  # No update
-            lambda grad, value, params, state: optimizer.update(
-                grad=grad, value=value, params=params, state=state
-            ),
-            grad,
-            value,
-            params,
-            state,
+            jnp.isnan(value), lambda: previous_state, lambda: updated_state
         )
         return state, (params, value, response, distance, metrics, aux)
 
@@ -215,6 +208,13 @@ def _update_champion_result(
 
     assert candidate["loss"].ndim == 1
     num_replicas = candidate["loss"].size
+
+    # Ensure that the champion result has the same tree structure as the candidate; this
+    # may not be the case e.g. when champion has been restored from a checkpoint.
+    champion = tree_util.tree_unflatten(
+        tree_util.tree_structure(candidate),
+        leaves=tree_util.tree_leaves(champion),
+    )
 
     is_new_champion = []
     for i in range(num_replicas):

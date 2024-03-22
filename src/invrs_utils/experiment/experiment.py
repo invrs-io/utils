@@ -11,7 +11,6 @@ import time
 import traceback
 from typing import Any, Callable, Dict, Sequence, Tuple
 
-
 FNAME_WID_CONFIG = "setup.json"
 FNAME_COMPLETED = "completed.txt"
 
