@@ -209,13 +209,6 @@ def _update_champion_result(
     assert candidate["loss"].ndim == 1
     num_replicas = candidate["loss"].size
 
-    # Ensure that the champion result has the same tree structure as the candidate; this
-    # may not be the case e.g. when champion has been restored from a checkpoint.
-    champion = tree_util.tree_unflatten(
-        tree_util.tree_structure(candidate),
-        leaves=tree_util.tree_leaves(champion),
-    )
-
     is_new_champion = []
     for i in range(num_replicas):
         # If binarization is not required or relevant, new champ if loss is lower.
@@ -231,15 +224,16 @@ def _update_champion_result(
         else:
             is_new_champion.append(candidate["loss"][i] < champion["loss"][i])
 
-    is_new_champion_tree = tree_util.tree_unflatten(
-        tree_util.tree_structure(candidate),
-        leaves=[
-            jnp.asarray(is_new_champion).reshape([num_replicas] + [1] * (leaf.ndim - 1))
-            for leaf in tree_util.tree_leaves(candidate)
-        ],
-    )
+    old_champion_leaves = tree_util.tree_leaves(champion)
+    candidate_leaves = tree_util.tree_leaves(candidate)
+    new_champion_leaves = [
+        new if is_new_champion else old
+        for new, old in zip(candidate_leaves, old_champion_leaves)
+    ]
 
-    return tree_util.tree_map(jnp.where, is_new_champion_tree, candidate, champion)
+    return tree_util.tree_unflatten(
+        tree_util.tree_structure(candidate), new_champion_leaves
+    )
 
 
 def _is_scalar(x: Any, num_replicas: int) -> bool:
