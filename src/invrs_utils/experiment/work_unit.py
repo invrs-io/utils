@@ -227,7 +227,13 @@ def _update_champion_result(
     old_champion_leaves = tree_util.tree_leaves(champion)
     candidate_leaves = tree_util.tree_leaves(candidate)
     new_champion_leaves = [
-        new if is_new_champion else old
+        jnp.where(
+            jnp.reshape(
+                jnp.asarray(is_new_champion), (num_replicas,) + (1,) * (new.ndim - 1)
+            ),
+            new,
+            old,
+        )
         for new, old in zip(candidate_leaves, old_champion_leaves)
     ]
 
