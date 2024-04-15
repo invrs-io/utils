@@ -14,6 +14,7 @@ import invrs_opt
 import jax
 import jax.numpy as jnp
 import numpy as onp
+from invrs_gym import challenges
 from invrs_gym.challenges import base as challenge_base
 from parameterized import parameterized
 from totypes import types
@@ -190,6 +191,58 @@ class WorkUnitTest(unittest.TestCase):
 
             latest_step = checkpoint.latest_step(wid_path)
             self.assertLess(latest_step, 99)
+            self.assertSequenceEqual(
+                set(glob.glob(f"{wid_path}/*")),
+                {
+                    f"{wid_path}/setup.json",
+                    f"{wid_path}/completed.txt",
+                    f"{wid_path}/checkpoint_{latest_step:04}.json",
+                },
+            )
+            ckpt = checkpoint.load(wid_path, step=latest_step)
+            onp.testing.assert_array_equal(
+                jnp.amin(ckpt["scalars"]["loss"], axis=0),
+                ckpt["champion_result"]["loss"],
+            )
+
+    @parameterized.expand(
+        [
+            [challenges.metagrating, 1],
+            [challenges.ceviche_lightweight_mode_converter, 1],
+            [challenges.metagrating, 2],
+            [challenges.ceviche_lightweight_mode_converter, 2],
+        ]
+    )
+    def test_actual_challenge(self, challenge_fn, num_replicas):
+        with tempfile.TemporaryDirectory() as wid_path:
+
+            def _run_work_unit():
+                if not os.path.exists(wid_path):
+                    os.makedirs(wid_path)
+
+                work_unit_config = locals()
+                del work_unit_config["challenge_fn"]
+                with open(wid_path + "/setup.json", "w") as f:
+                    json.dump(work_unit_config, f, indent=4)
+
+                work_unit.run_work_unit(
+                    key=jax.random.PRNGKey(0),
+                    wid_path=wid_path,
+                    challenge=challenge_fn(),
+                    optimizer=invrs_opt.lbfgsb(maxcor=20),
+                    steps=5,
+                    stop_on_zero_distance=True,
+                    stop_requires_binary=True,
+                    champion_requires_binary=False,
+                    save_interval_steps=10,
+                    max_to_keep=3,
+                    num_replicas=num_replicas,
+                )
+
+            _run_work_unit()
+
+            latest_step = checkpoint.latest_step(wid_path)
+            self.assertEqual(latest_step, 4)
             self.assertSequenceEqual(
                 set(glob.glob(f"{wid_path}/*")),
                 {
