@@ -31,6 +31,7 @@ def run_work_unit(
     max_to_keep: int = 1,
     print_interval: Optional[int] = 300,
     num_replicas: int = 1,
+    pipeline: bool = False,
 ) -> None:
     """Runs a work unit.
 
@@ -65,11 +66,15 @@ def run_work_unit(
         print_interval: Optional, the seconds elapsed between updates.
         num_replicas: The number of replicas for the work unit. Each replica is
             identical except for the random seed used to generate initial parameters.
+        pipeline: If `True`, the optimization is pipelined.
     """
     if os.path.isfile(f"{wid_path}/completed.txt"):
         return
     if not os.path.exists(wid_path):
         raise ValueError(f"{wid_path} does not exist.")
+
+    if pipeline and num_replicas == 1:
+        pipeline = False
 
     print(f"{wid_path} starting")
 
@@ -78,25 +83,9 @@ def run_work_unit(
         path=wid_path, save_interval_steps=save_interval_steps, max_to_keep=max_to_keep
     )
 
-    keys = jax.random.split(key, num_replicas)
-    del key
+    def eval_fn(step: int, state: Any) -> Tuple[Any, jnp.ndarray, Any, Any]:
+        """Performs the evaluation required for a single optimization step."""
 
-    if mngr.latest_step() is not None:
-        latest_step: int = mngr.latest_step()  # type: ignore[assignment]
-        latest_checkpoint = mngr.restore(latest_step)
-        state = latest_checkpoint["state"]
-        scalars = latest_checkpoint["scalars"]
-        champion_result = latest_checkpoint["champion_result"]
-    else:
-        latest_step = -1  # Next step is `0`.
-        latent_params = jax.vmap(challenge.component.init)(keys)
-        state = jax.vmap(optimizer.init)(latent_params)
-        scalars = {}
-        champion_result = {}
-
-    @jax.jit
-    @functools.partial(jax.vmap, in_axes=(None, 0))
-    def _step_fn(step: int, state: Any) -> Any:
         def loss_fn(params: Any) -> Tuple[jnp.ndarray, Any]:
             response_kwargs = response_kwargs_fn(step)
             response, aux = challenge.component.response(params, **response_kwargs)
@@ -106,24 +95,103 @@ def run_work_unit(
             return loss, (response, distance, metrics, aux)
 
         params = optimizer.params(state)
-        (value, (response, distance, metrics, aux)), grad = jax.value_and_grad(
-            loss_fn, has_aux=True
-        )(params)
+        (value, aux), grad = jax.value_and_grad(loss_fn, has_aux=True)(params)
+        return params, value, aux, grad
 
-        # Compute updated state, but return previous state if loss is `nan`. Note that
-        # we must ensure previous state has the proper tree structure, which may not
-        # be the case if e.g. it was restored from a checkpoint.
-        updated_state = optimizer.update(
-            grad=grad, value=value, params=params, state=state
-        )
-        previous_state = tree_util.tree_unflatten(
-            treedef=tree_util.tree_structure(updated_state),
-            leaves=tree_util.tree_leaves(state),
-        )
-        state = jax.lax.cond(
-            jnp.isnan(value), lambda: previous_state, lambda: updated_state
-        )
-        return state, (params, value, response, distance, metrics, aux)
+    # -------------------------------------------------------------------------
+    # Load state from checkpoint, or initialize new state.
+    # -------------------------------------------------------------------------
+
+    if mngr.latest_step() is not None:
+        latest_step: int = mngr.latest_step()  # type: ignore[assignment]
+        latest_checkpoint = mngr.restore(latest_step)
+        state = latest_checkpoint["state"]
+        scalars = latest_checkpoint["scalars"]
+        champion_result = latest_checkpoint["champion_result"]
+    else:
+        latest_step = -1  # Next step is `0`.
+        if not pipeline:
+            keys = jax.random.split(key, num=num_replicas)
+            del key
+            latent_params = jax.vmap(challenge.component.init)(keys)
+            state = jax.vmap(optimizer.init)(latent_params)
+        else:
+            # When the optimization is pipelined, two optimizer states are maintained.
+            # One is updated while the value-and-gradient evaluation for the second is
+            # performed. Then, the evaluation is performed for the first optimizer,
+            # while the second optimizer state is updated.
+            keys = jax.random.split(key, num=num_replicas)
+            keys_a = keys[: num_replicas // 2]
+            keys_b = keys[num_replicas // 2 :]
+            del key, keys
+            latent_params_a = jax.vmap(challenge.component.init)(keys_a)
+            latent_params_b = jax.vmap(challenge.component.init)(keys_b)
+            state_a = jax.vmap(optimizer.init)(latent_params_a)
+            state_b = jax.vmap(optimizer.init)(latent_params_b)
+            state = (state_a, state_b, jax.vmap(eval_fn, in_axes=(None, 0))(0, state_b))
+        scalars = {}
+        champion_result = {}
+
+    # -------------------------------------------------------------------------
+    # Define core calculations performed at each step.
+    # -------------------------------------------------------------------------
+
+    if not pipeline:
+
+        @jax.jit
+        @functools.partial(jax.vmap, in_axes=(None, 0))
+        def _step_fn(step: int, state: Any) -> Any:
+            params, value, (response, distance, metrics, aux), grad = eval_fn(
+                step, state
+            )
+            updated_state = optimizer.update(
+                grad=grad, value=value, params=params, state=state
+            )
+            # If `value` is `nan`, do not update the state.
+            updated_state = _select_if_not_nan(value, updated_state, state)
+            return updated_state, (params, value, response, distance, metrics, aux)
+
+    else:
+
+        @jax.jit
+        def _step_fn(step: int, state: Any) -> Any:
+            state_a, state_b, results_b = state
+
+            # State a: evaluate, and then update. No update if value is `nan`.
+            params_a, value_a, aux_a, grad_a = jax.vmap(eval_fn, in_axes=(None, 0))(
+                step, state_a
+            )
+            updated_state_a = jax.vmap(optimizer.update)(
+                grad=grad_a, value=value_a, params=params_a, state=state_a
+            )
+            updated_state_a = jax.vmap(_select_if_not_nan)(
+                value_a, updated_state_a, state_a
+            )
+
+            # State b: update, and then evaluate. No update if value is `nan`.
+            params_b, value_b, aux_b, grad_b = results_b
+            updated_state_b = jax.vmap(optimizer.update)(
+                grad=grad_b, value=value_b, params=params_b, state=state_b
+            )
+            updated_state_b = jax.vmap(_select_if_not_nan)(
+                value_b, updated_state_b, state_b
+            )
+            next_results_b = jax.vmap(eval_fn, in_axes=(None, 0))(
+                step + 1, updated_state_b
+            )
+
+            # Merge the a results and b results.
+            params, value, response, distance, metrics, aux = tree_util.tree_map(
+                lambda a, b: jnp.concatenate([a, b]),
+                (params_a, value_a) + aux_a,
+                (params_b, value_b) + aux_b,
+            )
+            updated_state = (updated_state_a, updated_state_b, next_results_b)
+            return updated_state, (params, value, response, distance, metrics, aux)
+
+    # -------------------------------------------------------------------------
+    # Run the optimization loop.
+    # -------------------------------------------------------------------------
 
     last_print_time = time.time()
     last_print_step = latest_step
@@ -195,6 +263,19 @@ def run_work_unit(
         os.utime(wid_path, None)
 
     print(f"{wid_path} finished")
+
+
+def _select_if_not_nan(
+    maybe_nan: jnp.ndarray,
+    true_value: Any,
+    false_value: Any,
+) -> Any:
+    """Return `true_value` if `maybe_nan` is not `nan`, otherwise `false_value`."""
+    false_value = tree_util.tree_unflatten(
+        treedef=tree_util.tree_structure(true_value),
+        leaves=tree_util.tree_leaves(false_value),
+    )
+    return jax.lax.cond(jnp.isnan(maybe_nan), lambda: false_value, lambda: true_value)
 
 
 def _update_champion_result(
@@ -287,7 +368,7 @@ class ParamsFn(Protocol):
 
 class UpdateFn(Protocol):
     def __call__(
-        self, *, grad: PyTree, value: float, params: PyTree, state: PyTree
+        self, *, grad: PyTree, value: jnp.ndarray, params: PyTree, state: PyTree
     ) -> PyTree:
         ...
 

@@ -256,3 +256,52 @@ class WorkUnitTest(unittest.TestCase):
                 jnp.amin(ckpt["scalars"]["loss"], axis=0),
                 ckpt["champion_result"]["loss"],
             )
+
+    def test_pipeline_matches_no_pipeline(self):
+        with tempfile.TemporaryDirectory() as experiment_path:
+            wid_path_pipeline = f"{experiment_path}/pipeline"
+            wid_path_no_pipeline = f"{experiment_path}/no_pipeline"
+            os.makedirs(wid_path_pipeline)
+            os.makedirs(wid_path_no_pipeline)
+
+            # Run the work unit with pipelining.
+            work_unit.run_work_unit(
+                key=jax.random.PRNGKey(0),
+                wid_path=wid_path_pipeline,
+                challenge=dummy_challenge_with_density(),
+                optimizer=invrs_opt.lbfgsb(maxcor=20),
+                steps=5,
+                stop_on_zero_distance=False,
+                stop_requires_binary=True,
+                champion_requires_binary=False,
+                save_interval_steps=10,
+                max_to_keep=3,
+                num_replicas=4,
+                pipeline=True,
+            )
+
+            # Run the work unit without pipelining.
+            work_unit.run_work_unit(
+                key=jax.random.PRNGKey(0),
+                wid_path=wid_path_no_pipeline,
+                challenge=dummy_challenge_with_density(),
+                optimizer=invrs_opt.lbfgsb(maxcor=20),
+                steps=5,
+                stop_on_zero_distance=False,
+                stop_requires_binary=True,
+                champion_requires_binary=False,
+                save_interval_steps=10,
+                max_to_keep=3,
+                num_replicas=4,
+                pipeline=False,
+            )
+
+            ckpt_pipeline = checkpoint.load(wid_path_pipeline, step=4)
+            ckpt_no_pipeline = checkpoint.load(wid_path_no_pipeline, step=4)
+
+            # Check that all scalars are equal.
+            for key in ("distance", "loss"):
+                onp.testing.assert_array_equal(
+                    ckpt_pipeline["scalars"][key],
+                    ckpt_no_pipeline["scalars"][key],
+                )
