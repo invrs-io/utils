@@ -38,11 +38,13 @@ def dummy_challenge():
         def loss(self, response):
             return jnp.sum(response**2)
 
-        def distance_to_target(self, response):
+        def _distance_to_target(self, response):
             return jnp.sum(jnp.abs(response)) - 0.1
 
         def metrics(self, response, params, aux):
-            return super().metrics(response, params, aux)
+            metrics = super().metrics(response, params, aux)
+            metrics.update({"distance_to_target": self._distance_to_target(response)})
+            return metrics
 
     return DummyChallenge(component=DummyComponent())
 
@@ -65,11 +67,13 @@ def dummy_challenge_with_density():
         def loss(self, response):
             return jnp.sum(response**2)
 
-        def distance_to_target(self, response):
+        def _distance_to_target(self, response):
             return jnp.sum(jnp.abs(response)) - 0.1
 
         def metrics(self, response, params, aux):
-            return super().metrics(response, params, aux)
+            metrics = super().metrics(response, params, aux)
+            metrics.update({"distance_to_target": self._distance_to_target(response)})
+            return metrics
 
     return DummyChallenge(component=DummyComponent())
 
@@ -81,7 +85,7 @@ class WorkUnitTest(unittest.TestCase):
                 dummy_challenge,
                 {
                     "loss",
-                    "distance",
+                    "distance_to_target",
                     "step_time",
                 },
                 1,
@@ -90,7 +94,7 @@ class WorkUnitTest(unittest.TestCase):
                 dummy_challenge_with_density,
                 {
                     "loss",
-                    "distance",
+                    "distance_to_target",
                     "step_time",
                     "binarization_degree",
                 },
@@ -100,7 +104,7 @@ class WorkUnitTest(unittest.TestCase):
                 dummy_challenge_with_density,
                 {
                     "loss",
-                    "distance",
+                    "distance_to_target",
                     "step_time",
                     "binarization_degree",
                 },

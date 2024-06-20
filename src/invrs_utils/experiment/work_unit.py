@@ -51,7 +51,7 @@ def run_work_unit(
         steps: The number of optimization steps.
         stop_on_zero_distance: Determines if the optimization run should be stopped
             early if zero distance to target is achieved, along with other optional
-            criteria.
+            criteria. Only active when challenge metrics include `distance_to_target`.
         stop_requires_binary: Determines if density arrays in the design must be binary
             for early stopping on zero distance.
         champion_requires_binary: Determines if a new champion must have a greater
@@ -101,12 +101,11 @@ def run_work_unit(
             response_kwargs = response_kwargs_fn(step)
             response, aux = challenge.component.response(params, **response_kwargs)
             loss = challenge.loss(response)
-            distance = challenge.distance_to_target(response)
             metrics = challenge.metrics(response, params, aux)
-            return loss, (response, distance, metrics, aux)
+            return loss, (response, metrics, aux)
 
         params = optimizer.params(state)
-        (value, (response, distance, metrics, aux)), grad = jax.value_and_grad(
+        (value, (response, metrics, aux)), grad = jax.value_and_grad(
             loss_fn, has_aux=True
         )(params)
 
@@ -123,7 +122,7 @@ def run_work_unit(
         state = jax.lax.cond(
             jnp.isnan(value), lambda: previous_state, lambda: updated_state
         )
-        return state, (params, value, response, distance, metrics, aux)
+        return state, (params, value, response, metrics, aux)
 
     last_print_time = time.time()
     last_print_step = latest_step
@@ -138,7 +137,7 @@ def run_work_unit(
         t0 = time.time()
         (
             state,
-            (params, loss_value, response, distance, metrics, aux),
+            (params, loss_value, response, metrics, aux),
         ) = _step_fn(i, state)
         t1 = time.time()
 
@@ -153,7 +152,6 @@ def run_work_unit(
             last_print_step = i
 
         _log_scalar("loss", loss_value)
-        _log_scalar("distance", distance)
         _log_scalar("step_time", jnp.full((num_replicas,), t1 - t0))
         for name, metric_value in metrics.items():
             if _is_scalar(metric_value, num_replicas):
@@ -166,7 +164,6 @@ def run_work_unit(
                 "binarization_degree": metrics["binarization_degree"],
                 "params": params,
                 "response": response,
-                "distance": distance,
                 "metrics": metrics,
                 "aux": aux,
             },
@@ -181,7 +178,8 @@ def run_work_unit(
         mngr.save(i, ckpt_dict)
         if (
             stop_on_zero_distance
-            and jnp.all(champion_result["distance"] <= 0)
+            and "distance_to_target" in metrics.keys()
+            and jnp.all(metrics["distance_to_target"] <= 0)
             and (
                 not stop_requires_binary
                 or champion_result["metrics"]["binarization_degree"] is None
