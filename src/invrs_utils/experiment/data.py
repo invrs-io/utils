@@ -87,7 +87,6 @@ def summarize_work_unit(
     wid_config: Dict,
     wid_df: pd.DataFrame,
     summarize_intervals: Sequence[Tuple[int, int]],
-    summarize_cols: Sequence[str] = ("loss", "distance_to_target"),
 ) -> pd.DataFrame:
     """Generates a dataframe summarizing an experiment work unit.
 
