@@ -49,6 +49,28 @@ def dummy_challenge():
     return DummyChallenge(component=DummyComponent())
 
 
+def dummy_challenge_with_no_distance_metric():
+    class DummyComponent(challenge_base.Component):
+        def init(self, key):
+            del key
+            return {"array": jnp.arange(100).reshape(10, 10).astype(float)}
+
+        def response(self, params):
+            return jnp.sum(params["array"], axis=0), {}
+
+    @dataclasses.dataclass
+    class DummyChallenge(challenge_base.Challenge):
+        component: challenge_base.Component
+
+        def loss(self, response):
+            return jnp.sum(response**2)
+
+        def metrics(self, response, params, aux):
+            return super().metrics(response, params, aux)
+
+    return DummyChallenge(component=DummyComponent())
+
+
 def dummy_challenge_with_density():
     class DummyComponent(challenge_base.Component):
         def init(self, key):
@@ -86,6 +108,14 @@ class WorkUnitTest(unittest.TestCase):
                 {
                     "loss",
                     "distance_to_target",
+                    "step_time",
+                },
+                1,
+            ],
+            [
+                dummy_challenge_with_no_distance_metric,
+                {
+                    "loss",
                     "step_time",
                 },
                 1,
@@ -161,12 +191,15 @@ class WorkUnitTest(unittest.TestCase):
 
     @parameterized.expand(
         [
-            [dummy_challenge, 1],
-            [dummy_challenge_with_density, 1],
-            [dummy_challenge_with_density, 10],
+            [dummy_challenge, 1, True],
+            [dummy_challenge_with_density, 1, True],
+            [dummy_challenge_with_density, 10, True],
+            [dummy_challenge_with_no_distance_metric, 1, False],
         ]
     )
-    def test_optimize_with_early_stopping(self, challenge_fn, num_replicas):
+    def test_optimize_with_early_stopping(
+        self, challenge_fn, num_replicas, should_stop_early
+    ):
         with tempfile.TemporaryDirectory() as wid_path:
 
             def _run_work_unit():
@@ -187,14 +220,16 @@ class WorkUnitTest(unittest.TestCase):
                     stop_on_zero_distance=True,
                     stop_requires_binary=True,
                     save_interval_steps=10,
-                    max_to_keep=3,
+                    max_to_keep=1,
                     num_replicas=num_replicas,
                 )
 
             _run_work_unit()
 
             latest_step = checkpoint.latest_step(wid_path)
-            self.assertLess(latest_step, 99)
+            if should_stop_early:
+                self.assertLess(latest_step, 99)
+            print(glob.glob(f"{wid_path}/*"))
             self.assertSequenceEqual(
                 set(glob.glob(f"{wid_path}/*")),
                 {
