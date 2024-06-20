@@ -50,7 +50,7 @@ class DataTest(unittest.TestCase):
                 pytree={
                     "scalars": {
                         "loss": onp.asarray(loss),
-                        "distance": onp.asarray(distance),
+                        "distance_to_target": onp.asarray(distance),
                     }
                 },
             )
@@ -78,7 +78,7 @@ class DataTest(unittest.TestCase):
             {"a", "b", "c", "completed", "wid", "latest_step", "latest_time_utc"},
         )
         self.assertSequenceEqual(
-            set(df.columns), {"replica", "step", "loss", "distance"}
+            set(df.columns), {"replica", "step", "loss", "distance_to_target"}
         )
         self.assertEqual(len(df), STEPS * num_replicas)
 
