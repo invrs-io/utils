@@ -38,6 +38,9 @@ def dummy_challenge():
         def loss(self, response):
             return jnp.sum(response**2)
 
+        def eval_metric(self, response):
+            return 1 - jnp.sum(response) ** 2
+
         def _distance_to_target(self, response):
             return jnp.sum(jnp.abs(response)) - 0.1
 
@@ -65,6 +68,9 @@ def dummy_challenge_with_no_distance_metric():
         def loss(self, response):
             return jnp.sum(response**2)
 
+        def eval_metric(self, response):
+            return 1 - jnp.sum(response) ** 2
+
         def metrics(self, response, params, aux):
             return super().metrics(response, params, aux)
 
@@ -88,6 +94,9 @@ def dummy_challenge_with_density():
 
         def loss(self, response):
             return jnp.sum(response**2)
+
+        def eval_metric(self, response):
+            return 1 - jnp.sum(response) ** 2
 
         def _distance_to_target(self, response):
             return jnp.sum(jnp.abs(response)) - 0.1
