@@ -1,5 +1,5 @@
 # invrs-utils - Miscellaneous utilities
-`v0.10.0`
+`v1.0.0`
 
 This package is a collection of utilities that may be useful, but do not have fundamental roles in the invrs-io ecosystem. These currently include,
 
