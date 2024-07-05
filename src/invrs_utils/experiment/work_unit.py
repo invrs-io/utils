@@ -23,8 +23,6 @@ def run_work_unit(
     challenge: "Challenge",
     optimizer: "Optimizer",
     steps: int,
-    stop_on_zero_distance: bool = False,
-    stop_requires_binary: bool = True,
     champion_requires_binary: bool = True,
     response_kwargs_fn: Callable[[int], Dict[str, Any]] = lambda _: {},
     save_interval_steps: int = 10,
@@ -39,9 +37,9 @@ def run_work_unit(
     has been achieved.
 
     Checkpoints are saved to the `wid_path`. These include the optimizer state, scalars
-    (such as loss, distance to target, and any scalar metrics), and quantities
-    associated with the best solution so far encountered (the "champion"); the best
-    solution is the one which has the highest binarization degree and lowest loss.
+    (such as loss, eval metric, and any scalar metrics), and quantities associated with
+    the best solution so far encountered (the "champion"); the best solution is the one
+    which has the highest binarization degree and highest eval metric.
 
     Args:
         key: Random number generator key used to initialize parameters.
@@ -49,11 +47,6 @@ def run_work_unit(
         challenge: The challenge to be optimized.
         optimizer: The optimizer for the work unit.
         steps: The number of optimization steps.
-        stop_on_zero_distance: Determines if the optimization run should be stopped
-            early if zero distance to target is achieved, along with other optional
-            criteria. Only active when challenge metrics include `distance_to_target`.
-        stop_requires_binary: Determines if density arrays in the design must be binary
-            for early stopping on zero distance.
         champion_requires_binary: Determines if a new champion must have a greater
             degree of binarization than the previous champion. If `True`, champion
             results tend to become more binary, even at the cost of performance (loss).
@@ -101,11 +94,12 @@ def run_work_unit(
             response_kwargs = response_kwargs_fn(step)
             response, aux = challenge.component.response(params, **response_kwargs)
             loss = challenge.loss(response)
+            eval_metric = challenge.eval_metric(response)
             metrics = challenge.metrics(response, params, aux)
-            return loss, (response, metrics, aux)
+            return loss, (response, eval_metric, metrics, aux)
 
         params = optimizer.params(state)
-        (value, (response, metrics, aux)), grad = jax.value_and_grad(
+        (value, (response, eval_metric, metrics, aux)), grad = jax.value_and_grad(
             loss_fn, has_aux=True
         )(params)
 
@@ -122,7 +116,7 @@ def run_work_unit(
         state = jax.lax.cond(
             jnp.isnan(value), lambda: previous_state, lambda: updated_state
         )
-        return state, (params, value, response, metrics, aux)
+        return state, (params, value, response, eval_metric, metrics, aux)
 
     last_print_time = time.time()
     last_print_step = latest_step
@@ -137,7 +131,7 @@ def run_work_unit(
         t0 = time.time()
         (
             state,
-            (params, loss_value, response, metrics, aux),
+            (params, loss_value, response, eval_metric, metrics, aux),
         ) = _step_fn(i, state)
         t1 = time.time()
 
@@ -152,6 +146,7 @@ def run_work_unit(
             last_print_step = i
 
         _log_scalar("loss", loss_value)
+        _log_scalar("eval_metric", eval_metric)
         _log_scalar("step_time", jnp.full((num_replicas,), t1 - t0))
         for name, metric_value in metrics.items():
             if _is_scalar(metric_value, num_replicas):
@@ -161,6 +156,7 @@ def run_work_unit(
             candidate={
                 "step": jnp.full((num_replicas,), i),
                 "loss": loss_value,
+                "eval_metric": eval_metric,
                 "binarization_degree": metrics["binarization_degree"],
                 "params": params,
                 "response": response,
@@ -176,17 +172,6 @@ def run_work_unit(
             "champion_result": champion_result,
         }
         mngr.save(i, ckpt_dict)
-        if (
-            stop_on_zero_distance
-            and "distance_to_target" in metrics.keys()
-            and jnp.all(metrics["distance_to_target"] <= 0)
-            and (
-                not stop_requires_binary
-                or champion_result["metrics"]["binarization_degree"] is None
-                or jnp.all(champion_result["metrics"]["binarization_degree"] == 1)
-            )
-        ):
-            break
 
     mngr.save(i, ckpt_dict, force_save=True)
     with open(f"{wid_path}/completed.txt", "w"):
@@ -207,27 +192,27 @@ def _update_champion_result(
     assert candidate["loss"].ndim == 1
     num_replicas = candidate["loss"].size
 
-    is_new_champion = []
+    new_champ = []
     for i in range(num_replicas):
-        # If binarization is not required or relevant, new champ if loss is lower.
+        # If binarization is not required/relevant, new champ if eval metric is higher.
         if candidate["binarization_degree"] is None or not requires_binary:
-            is_new_champion.append(candidate["loss"][i] < champion["loss"][i])
+            new_champ.append(candidate["eval_metric"][i] > champion["eval_metric"][i])
         # If binarization is required, new champ if binarization is greater.
         elif candidate["binarization_degree"][i] > champion["binarization_degree"][i]:
-            is_new_champion.append(True)
+            new_champ.append(True)
         # If binarization is required, no new champ if binarization is lesser.
         elif candidate["binarization_degree"][i] < champion["binarization_degree"][i]:
-            is_new_champion.append(False)
+            new_champ.append(False)
         # If binarization is exactly equal, new champ if loss is lower.
         else:
-            is_new_champion.append(candidate["loss"][i] < champion["loss"][i])
+            new_champ.append(candidate["eval_metric"][i] > champion["eval_metric"][i])
 
     old_champion_leaves = tree_util.tree_leaves(champion)
     candidate_leaves = tree_util.tree_leaves(candidate)
     new_champion_leaves = [
         jnp.where(
             jnp.reshape(
-                jnp.asarray(is_new_champion), (num_replicas,) + (1,) * (new.ndim - 1)
+                jnp.asarray(new_champ), (num_replicas,) + (1,) * (new.ndim - 1)
             ),
             new,
             old,
@@ -264,7 +249,7 @@ class Challenge(Protocol):
     def loss(self, response: PyTree) -> jnp.ndarray:
         ...
 
-    def distance_to_target(self, response: PyTree) -> jnp.ndarray:
+    def eval_metric(self, response: PyTree) -> jnp.ndarray:
         ...
 
     def metrics(
