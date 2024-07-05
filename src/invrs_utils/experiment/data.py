@@ -30,15 +30,13 @@ LOSS_P10 = "loss_p10"
 LOSS_P25 = "loss_p25"
 LOSS_P50 = "loss_p50"
 
-DISTANCE = "distance_to_target"
-DISTANCE_MIN = "distance_min"
-DISTANCE_MEAN = "distance_mean"
-DISTANCE_ZERO_STEP = "distance_zero_step"
-DISTANCE_ZERO_COUNT = "distance_zero_count"
-DISTANCE_P05 = "distance_p05"
-DISTANCE_P10 = "distance_p10"
-DISTANCE_P25 = "distance_p25"
-DISTANCE_P50 = "distance_p50"
+EVAL_METRIC = "eval_metric"
+EVAL_METRIC_MAX = "eval_metric_max"
+EVAL_METRIC_MEAN = "eval_metric_mean"
+EVAL_METRIC_P95 = "eval_metric_p95"
+EVAL_METRIC_P90 = "eval_metric_p90"
+EVAL_METRIC_P75 = "eval_metric_p75"
+EVAL_METRIC_P50 = "eval_metric_p50"
 
 SUMMARY_INTERVAL = "summary_interval"
 
@@ -94,12 +92,10 @@ def summarize_work_unit(
       - The minimum loss over the interval
       - The mean loss over the interval
       - The 5th, 10th, 25th, and 50th percentile of loss over the interal
-      - The minimum distance over the interval (if `distance_to_spec` is a column in
+      - The maximum eval metric over the interval (if `eval_metric` is a column in
         the work unit dataframe).
-      - The mean distance over the interval
-      - The 5th, 10th, 25th, and 50th percentile of distance over the interval
-      - The number of steps where the distance was zero or negative
-      - The first step (within each interval) where the distance is zero or negative
+      - The mean eval metric over the interval
+      - The 95th, 90th, 75th, and 50th percentile of eval metric over the interval
 
     Args:
         wid_config: Dictionary containing the work unit configuration. Config data
@@ -125,18 +121,16 @@ def summarize_work_unit(
     ):
         data[key] = []
 
-    include_distance = DISTANCE in wid_df.columns
-    if include_distance:
-        distance = onp.asarray(wid_df[DISTANCE])
+    include_eval_metric = EVAL_METRIC in wid_df.columns
+    if include_eval_metric:
+        eval_metric = onp.asarray(wid_df[EVAL_METRIC])
         for key in (
-            DISTANCE_MIN,
-            DISTANCE_MEAN,
-            DISTANCE_P05,
-            DISTANCE_P10,
-            DISTANCE_P25,
-            DISTANCE_P50,
-            DISTANCE_ZERO_COUNT,
-            DISTANCE_ZERO_STEP,
+            EVAL_METRIC_MAX,
+            EVAL_METRIC_MEAN,
+            EVAL_METRIC_P95,
+            EVAL_METRIC_P90,
+            EVAL_METRIC_P75,
+            EVAL_METRIC_P50,
         ):
             data[key] = []
 
@@ -151,22 +145,14 @@ def summarize_work_unit(
         data[LOSS_P25].append(onp.percentile(interval_loss, 25))
         data[LOSS_P50].append(onp.percentile(interval_loss, 50))
 
-        if include_distance:
-            interval_distance = distance[lo : min(hi, len(loss))]
-            data[DISTANCE_MIN].append(onp.amin(interval_distance))
-            data[DISTANCE_MEAN].append(onp.mean(interval_distance))
-            data[DISTANCE_P05].append(onp.percentile(interval_distance, 5))
-            data[DISTANCE_P10].append(onp.percentile(interval_distance, 10))
-            data[DISTANCE_P25].append(onp.percentile(interval_distance, 25))
-            data[DISTANCE_P50].append(onp.percentile(interval_distance, 50))
-            data[DISTANCE_ZERO_COUNT].append(onp.sum(interval_distance <= 0))
-
-            (zero_distance_steps,) = onp.where(interval_distance <= 0)
-            if zero_distance_steps.size == 0:
-                zero_distance_step = onp.nan
-            else:
-                zero_distance_step = lo + zero_distance_steps[0]
-            data[DISTANCE_ZERO_STEP].append(zero_distance_step)
+        if include_eval_metric:
+            interval_eval_metric = eval_metric[lo : min(hi, len(loss))]
+            data[EVAL_METRIC_MAX].append(onp.amax(interval_eval_metric))
+            data[EVAL_METRIC_MEAN].append(onp.mean(interval_eval_metric))
+            data[EVAL_METRIC_P95].append(onp.percentile(interval_eval_metric, 95))
+            data[EVAL_METRIC_P90].append(onp.percentile(interval_eval_metric, 90))
+            data[EVAL_METRIC_P75].append(onp.percentile(interval_eval_metric, 75))
+            data[EVAL_METRIC_P50].append(onp.percentile(interval_eval_metric, 50))
 
     df = pd.DataFrame.from_dict(data)
     for key, value in wid_config.items():

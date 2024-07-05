@@ -15,17 +15,17 @@ from invrs_utils.experiment import checkpoint, data
 
 NUM_WORK_UNITS = 4
 STEPS = 30
-DISTANCE_ZERO_STEP = 13
+EVAL_METRIC_ZERO_STEP = 13
 
 
 def _loss(i):
-    # A dummy loss function.
+    # A dummy loss function which monotonically decreases with `i`.
     return onp.sqrt(i)
 
 
-def _distance(i):
-    # A dummy distance function which is zero at i == 13.
-    return onp.where(i == DISTANCE_ZERO_STEP, 0, i**2 + 0.1)
+def _eval_metric(i):
+    # A dummy eval metric which monotonically increases with `i`.
+    return 1 - _loss(i)
 
 
 class DataTest(unittest.TestCase):
@@ -41,16 +41,16 @@ class DataTest(unittest.TestCase):
             max_to_keep=1,
         )
         loss = []
-        distance = []
+        eval_metric = []
         for i in range(STEPS):
             loss.append([_loss(i)] * num_replicas)
-            distance.append([_distance(i)] * num_replicas)
+            eval_metric.append([_eval_metric(i)] * num_replicas)
             mgr.save(
                 step=i,
                 pytree={
                     "scalars": {
                         "loss": onp.asarray(loss),
-                        "distance_to_target": onp.asarray(distance),
+                        "eval_metric": onp.asarray(eval_metric),
                     }
                 },
             )
@@ -78,7 +78,7 @@ class DataTest(unittest.TestCase):
             {"a", "b", "c", "completed", "wid", "latest_step", "latest_time_utc"},
         )
         self.assertSequenceEqual(
-            set(df.columns), {"replica", "step", "loss", "distance_to_target"}
+            set(df.columns), {"replica", "step", "loss", "eval_metric"}
         )
         self.assertEqual(len(df), STEPS * num_replicas)
 
@@ -106,14 +106,12 @@ class DataTest(unittest.TestCase):
             data.LOSS_P10,
             data.LOSS_P25,
             data.LOSS_P50,
-            data.DISTANCE_MIN,
-            data.DISTANCE_MEAN,
-            data.DISTANCE_P05,
-            data.DISTANCE_P10,
-            data.DISTANCE_P25,
-            data.DISTANCE_P50,
-            data.DISTANCE_ZERO_STEP,
-            data.DISTANCE_ZERO_COUNT,
+            data.EVAL_METRIC_MAX,
+            data.EVAL_METRIC_MEAN,
+            data.EVAL_METRIC_P95,
+            data.EVAL_METRIC_P90,
+            data.EVAL_METRIC_P75,
+            data.EVAL_METRIC_P50,
         ]
         self.assertSequenceEqual(set(df.columns), set(expected_cols))
 
@@ -126,36 +124,43 @@ class DataTest(unittest.TestCase):
             onp.mean(_loss(onp.arange(0, 10))),
         )
         onp.testing.assert_allclose(
+            df[df["summary_interval"] == "000-010"][data.LOSS_P05],
+            onp.percentile(_loss(onp.arange(0, 10)), 5),
+        )
+        onp.testing.assert_allclose(
             df[df["summary_interval"] == "000-010"][data.LOSS_P10],
             onp.percentile(_loss(onp.arange(0, 10)), 10),
         )
+        onp.testing.assert_allclose(
+            df[df["summary_interval"] == "000-010"][data.LOSS_P25],
+            onp.percentile(_loss(onp.arange(0, 10)), 25),
+        )
+        onp.testing.assert_allclose(
+            df[df["summary_interval"] == "000-010"][data.LOSS_P50],
+            onp.percentile(_loss(onp.arange(0, 10)), 50),
+        )
 
         onp.testing.assert_allclose(
-            df[df["summary_interval"] == "000-010"][data.DISTANCE_MIN],
-            onp.amin(_distance(onp.arange(0, 10))),
+            df[df["summary_interval"] == "000-010"][data.EVAL_METRIC_MAX],
+            onp.amax(_eval_metric(onp.arange(0, 10))),
         )
         onp.testing.assert_allclose(
-            df[df["summary_interval"] == "000-010"][data.DISTANCE_MEAN],
-            onp.mean(_distance(onp.arange(0, 10))),
+            df[df["summary_interval"] == "000-010"][data.EVAL_METRIC_MEAN],
+            onp.mean(_eval_metric(onp.arange(0, 10))),
         )
         onp.testing.assert_allclose(
-            df[df["summary_interval"] == "000-010"][data.DISTANCE_P10],
-            onp.percentile(_distance(onp.arange(0, 10)), 10),
+            df[df["summary_interval"] == "000-010"][data.EVAL_METRIC_P95],
+            onp.percentile(_eval_metric(onp.arange(0, 10)), 95),
         )
-
-        onp.testing.assert_array_equal(
-            df[df["summary_interval"] == "000-010"][data.DISTANCE_ZERO_COUNT],
-            onp.zeros(NUM_WORK_UNITS * num_replicas),
+        onp.testing.assert_allclose(
+            df[df["summary_interval"] == "000-010"][data.EVAL_METRIC_P90],
+            onp.percentile(_eval_metric(onp.arange(0, 10)), 90),
         )
-        onp.testing.assert_array_equal(
-            df[df["summary_interval"] == "010-020"][data.DISTANCE_ZERO_COUNT],
-            onp.ones(NUM_WORK_UNITS * num_replicas),
+        onp.testing.assert_allclose(
+            df[df["summary_interval"] == "000-010"][data.EVAL_METRIC_P75],
+            onp.percentile(_eval_metric(onp.arange(0, 10)), 75),
         )
-        onp.testing.assert_array_equal(
-            df[df["summary_interval"] == "000-010"][data.DISTANCE_ZERO_STEP],
-            onp.full((NUM_WORK_UNITS * num_replicas,), onp.nan),
-        )
-        onp.testing.assert_array_equal(
-            df[df["summary_interval"] == "010-020"][data.DISTANCE_ZERO_STEP],
-            onp.full((NUM_WORK_UNITS * num_replicas,), DISTANCE_ZERO_STEP),
+        onp.testing.assert_allclose(
+            df[df["summary_interval"] == "000-010"][data.EVAL_METRIC_P50],
+            onp.percentile(_eval_metric(onp.arange(0, 10)), 50),
         )
