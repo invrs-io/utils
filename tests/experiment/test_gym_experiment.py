@@ -32,8 +32,6 @@ class GymExperimentTest(unittest.TestCase):
                     challenge=challenges.metagrating(),
                     optimizer=invrs_opt.density_lbfgsb(beta=beta),
                     steps=steps,
-                    stop_on_zero_distance=False,
-                    stop_requires_binary=True,
                     num_replicas=num_replicas,
                 )
 
