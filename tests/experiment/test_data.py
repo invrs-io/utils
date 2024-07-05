@@ -15,7 +15,6 @@ from invrs_utils.experiment import checkpoint, data
 
 NUM_WORK_UNITS = 4
 STEPS = 30
-EVAL_METRIC_ZERO_STEP = 13
 
 
 def _loss(i):
