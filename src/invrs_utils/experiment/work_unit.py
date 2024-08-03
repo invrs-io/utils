@@ -59,9 +59,6 @@ def run_work_unit(
         print_interval: Optional, the seconds elapsed between updates.
         num_replicas: The number of replicas for the work unit. Each replica is
             identical except for the random seed used to generate initial parameters.
-
-    Raises:
-        RuntimeError: If `nan`s are found in the optimizer state.
     """
     if os.path.isfile(f"{wid_path}/completed.txt"):
         return
