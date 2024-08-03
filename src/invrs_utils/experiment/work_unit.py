@@ -6,6 +6,7 @@ Copyright (c) 2023 The INVRS-IO authors.
 import functools
 import os
 import time
+import warnings
 from typing import Any, Callable, Dict, Optional, Protocol, Tuple
 
 import jax
@@ -58,6 +59,9 @@ def run_work_unit(
         print_interval: Optional, the seconds elapsed between updates.
         num_replicas: The number of replicas for the work unit. Each replica is
             identical except for the random seed used to generate initial parameters.
+
+    Raises:
+        RuntimeError: If `nan`s are found in the optimizer state.
     """
     if os.path.isfile(f"{wid_path}/completed.txt"):
         return
@@ -102,21 +106,26 @@ def run_work_unit(
         (value, (response, eval_metric, metrics, aux)), grad = jax.value_and_grad(
             loss_fn, has_aux=True
         )(params)
-
-        # Compute updated state, but return previous state if loss is `nan`. Note that
-        # we must ensure previous state has the proper tree structure, which may not
-        # be the case if e.g. it was restored from a checkpoint.
         updated_state = optimizer.update(
             grad=grad, value=value, params=params, state=state
         )
+
+        # Ensure the previous state has the proper tree structure. If the update is
+        # corrupted due to presence of `nan` in the loss value or gradient, we may
+        # return the previous state with no update.
         previous_state = tree_util.tree_unflatten(
             treedef=tree_util.tree_structure(updated_state),
             leaves=tree_util.tree_leaves(state),
         )
-        state = jax.lax.cond(
-            jnp.isnan(value), lambda: previous_state, lambda: updated_state
+
+        grad_contains_nan = jnp.any(
+            jnp.asarray(
+                [jnp.any(jnp.isnan(leaf)) for leaf in tree_util.tree_leaves(grad)]
+            )
         )
-        return state, (params, value, response, eval_metric, metrics, aux)
+        skip_update = jnp.isnan(value) | grad_contains_nan
+        state = jax.lax.cond(skip_update, lambda: previous_state, lambda: updated_state)
+        return state, skip_update, (params, value, response, eval_metric, metrics, aux)
 
     last_print_time = time.time()
     last_print_step = latest_step
@@ -131,9 +140,17 @@ def run_work_unit(
         t0 = time.time()
         (
             state,
+            skip_update,
             (params, loss_value, response, eval_metric, metrics, aux),
         ) = _step_fn(i, state)
         t1 = time.time()
+
+        for replica, skipped in enumerate(skip_update):
+            if skipped:
+                warnings.warn(
+                    f"Skipped update for replica {replica} due to `nan` values at "
+                    f"step {i}."
+                )
 
         if print_interval is not None and (
             time.time() > last_print_time + print_interval
