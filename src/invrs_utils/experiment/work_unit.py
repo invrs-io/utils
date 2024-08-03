@@ -208,8 +208,11 @@ def _update_champion_result(
 
     new_champ = []
     for i in range(num_replicas):
+        # If the old champion has a `nan` eval metric.
+        if jnp.isnan(champion["eval_metric"][i]):
+            new_champ.append(True)
         # If binarization is not required/relevant, new champ if eval metric is higher.
-        if candidate["binarization_degree"] is None or not requires_binary:
+        elif candidate["binarization_degree"] is None or not requires_binary:
             new_champ.append(candidate["eval_metric"][i] > champion["eval_metric"][i])
         # If binarization is required, new champ if binarization is greater.
         elif candidate["binarization_degree"][i] > champion["binarization_degree"][i]:
