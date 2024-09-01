@@ -13,6 +13,7 @@ from typing import Any, Callable, Dict, Sequence, Tuple
 
 FNAME_WID_CONFIG = "setup.json"
 FNAME_COMPLETED = "completed.txt"
+LINE_LENGTH = 200
 
 
 def run_experiment(
@@ -29,14 +30,22 @@ def run_experiment(
 
     # Print some information about the experiment.
     print(
-        f"Experiment:\n"
-        f"  worker count = {max(1, workers)}\n"
-        f"  work unit count = {len(sweeps)}\n"
-        f"  experiment path = {experiment_path}\n"
-        f"Work units:"
+        f"Experiment {experiment_path.split('/')[-1]} (path={experiment_path}, "
+        f"workers={max(1, workers)}, "
+        f"work_units={len(sweeps)})"
     )
     for wid_path, kwargs in zip(wid_paths, sweeps):
-        print(f"  {wid_path}: {kwargs}")
+        kwarg_strs = [f"{keyword}={value}" for keyword, value in kwargs.items()]
+        lines = [f"  {wid_path.split('/')[-1]}: "]
+        for i, ks in enumerate(kwarg_strs):
+            if len(lines[-1]) < LINE_LENGTH:
+                lines[-1] += f"{ks}"
+            else:
+                lines.append(f"            {ks}")
+            if i < len(kwarg_strs) - 1:
+                lines[-1] += ", "
+        for line in lines:
+            print(line)
 
     path_and_kwargs = list(zip(wid_paths, sweeps))
     if randomize:

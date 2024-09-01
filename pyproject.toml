@@ -1,7 +1,7 @@
 [project]
 
 name = "invrs_utils"
-version = "v1.1.1"
+version = "v1.2.0"
 description = "Miscellaneous utilities for the invrs-io ecosystem"
 keywords = ["topology", "optimization", "jax", "inverse design"]
 readme = "README.md"
@@ -18,6 +18,8 @@ maintainers = [
 dependencies = [
     "pandas",
     "totypes",
+    "tqdm",
+    "types-tqdm",
 ]
 
 [project.optional-dependencies]
