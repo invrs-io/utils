@@ -13,7 +13,7 @@ from typing import Any, Callable, Dict, Sequence, Tuple
 
 FNAME_WID_CONFIG = "setup.json"
 FNAME_COMPLETED = "completed.txt"
-LINE_LENGTH = 30
+LINE_LENGTH = 200
 
 
 def run_experiment(
