@@ -18,6 +18,8 @@ maintainers = [
 dependencies = [
     "pandas",
     "totypes",
+    "tqdm",
+    "types-tqdm",
 ]
 
 [project.optional-dependencies]

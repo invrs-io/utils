@@ -6,8 +6,9 @@ Copyright (c) 2023 The INVRS-IO authors.
 import functools
 import os
 import time
+import tqdm
 import warnings
-from typing import Any, Callable, Dict, Optional, Protocol, Tuple
+from typing import Any, Callable, Dict, Protocol, Tuple
 
 import jax
 import jax.numpy as jnp
@@ -28,7 +29,6 @@ def run_work_unit(
     response_kwargs_fn: Callable[[int], Dict[str, Any]] = lambda _: {},
     save_interval_steps: int = 10,
     max_to_keep: int = 1,
-    print_interval: Optional[int] = 300,
     num_replicas: int = 1,
 ) -> None:
     """Runs a work unit.
@@ -56,7 +56,6 @@ def run_work_unit(
             enables e.g. evaluation with random wavelengths at each step.
         save_interval_steps: The interval at which checkpoints are saved to `wid_path`.
         max_to_keep: The maximum number of checkpoints to keep.
-        print_interval: Optional, the seconds elapsed between updates.
         num_replicas: The number of replicas for the work unit. Each replica is
             identical except for the random seed used to generate initial parameters.
     """
@@ -64,8 +63,6 @@ def run_work_unit(
         return
     if not os.path.exists(wid_path):
         raise ValueError(f"{wid_path} does not exist.")
-
-    print(f"{wid_path} starting")
 
     # Create a basic checkpoint manager that can serialize custom types.
     mngr = checkpoint.CheckpointManager(
@@ -124,16 +121,13 @@ def run_work_unit(
         state = jax.lax.cond(skip_update, lambda: previous_state, lambda: updated_state)
         return state, skip_update, (params, value, response, eval_metric, metrics, aux)
 
-    last_print_time = time.time()
-    last_print_step = latest_step
-
     def _log_scalar(name: str, value: jnp.ndarray) -> None:
         if name not in scalars:
             assert value.ndim == 1
             scalars[name] = jnp.zeros((0, value.size))
         scalars[name] = jnp.concatenate([scalars[name], value[jnp.newaxis, :]])
 
-    for i in range(latest_step + 1, steps):
+    for i in tqdm.trange(latest_step + 1, steps, desc=wid_path.split("/")[-1]):
         t0 = time.time()
         (
             state,
@@ -148,16 +142,6 @@ def run_work_unit(
                     f"Skipped update for replica {replica} due to `nan` values at "
                     f"step {i}."
                 )
-
-        if print_interval is not None and (
-            time.time() > last_print_time + print_interval
-        ):
-            print(
-                f"{wid_path} is now at step {i} "
-                f"({(t1 - last_print_time) / (i - last_print_step):.1f}s / step)"
-            )
-            last_print_time = time.time()
-            last_print_step = i
 
         _log_scalar("loss", loss_value)
         _log_scalar("eval_metric", eval_metric)
@@ -190,8 +174,6 @@ def run_work_unit(
     mngr.save(i, ckpt_dict, force_save=True)
     with open(f"{wid_path}/completed.txt", "w"):
         os.utime(wid_path, None)
-
-    print(f"{wid_path} finished")
 
 
 def _update_champion_result(

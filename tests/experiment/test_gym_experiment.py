@@ -50,7 +50,6 @@ class GymExperimentTest(unittest.TestCase):
 
             # Delete the `completed.txt` files and run for some aditional steps.
             for fname in glob.glob(f"{experiment_path}/wid_*/completed.txt"):
-                print(fname)
                 os.remove(fname)
 
             sweeps = sweep.product(
