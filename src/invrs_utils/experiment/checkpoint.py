@@ -7,7 +7,7 @@ import dataclasses
 import glob
 import os
 import time
-from typing import Any, Callable, List, Optional, Union
+from typing import Any, Callable, Dict, List, Optional, Union
 
 from totypes import json_utils
 
@@ -121,3 +121,22 @@ def fname_for_step(wid_path: str, step: Union[int, str]) -> str:
 def step_for_fname(checkpoint_fname: str) -> int:
     """Return the step for the given checkpoint filename."""
     return int(checkpoint_fname.split("_")[-1][:-5])
+
+
+def save_scalars(step: int, scalars: Dict[str, float], wid_path: str) -> None:
+    """Save scalars to the work unit directory and deletes previously saved scalars."""
+    prev_scalars_paths = glob.glob(f"{wid_path}/scalars_*.json")
+    serialized = json_utils.json_from_pytree(scalars)
+    temp_fname = f"{wid_path}/temp_scalars_{str(int(time.time()))}.json"
+    with open(temp_fname, "w") as f:
+        f.write(serialized)
+    os.rename(temp_fname, f"{wid_path}/scalars_{step:04}.json")
+    for path in prev_scalars_paths:
+        os.remove(path)
+
+
+def load_scalars(path: str) -> Dict[str, float]:
+    """Load scalars from the specified path."""
+    with open(path) as f:
+        serialized = f.read()
+    return json_utils.pytree_from_json(serialized)

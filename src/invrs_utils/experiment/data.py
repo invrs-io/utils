@@ -194,9 +194,13 @@ def load_work_unit_scalars(wid_path: str) -> Tuple[Dict, pd.DataFrame]:
         TIME_FORMAT
     )
 
-    latest_checkpoint = checkpoint.load(wid_path, latest_step)
+    scalars_path = f"{wid_path}/scalars_{latest_step:04}.json"
+    if os.path.exists(scalars_path):
+        scalars = checkpoint.load_scalars(scalars_path)
+    else:
+        latest_checkpoint = checkpoint.load(wid_path, latest_step)
+        scalars = latest_checkpoint[SCALARS]
 
-    scalars = latest_checkpoint[SCALARS]
     scalars_shape = list(scalars.values())[0].shape
     num_steps = scalars_shape[0]
     num_replicas = 1 if len(scalars_shape) == 1 else scalars_shape[1]

@@ -4,7 +4,6 @@ Copyright (c) 2023 The INVRS-IO authors.
 """
 
 import functools
-import glob
 import os
 import time
 import tqdm
@@ -14,7 +13,6 @@ from typing import Any, Callable, Dict, Protocol, Tuple
 import jax
 import jax.numpy as jnp
 from jax import tree_util
-from totypes import json_utils
 
 from invrs_utils.experiment import checkpoint
 
@@ -168,7 +166,7 @@ def run_work_unit(
         )
         ckpt_dict = dict(state=state, scalars=scalars, champion_result=champion_result)
         mngr.save(i, ckpt_dict)
-        _save_scalars(i, scalars, wid_path=wid_path)
+        checkpoint.save_scalars(i, scalars, wid_path=wid_path)
 
     mngr.save(i, ckpt_dict, force_save=True)
     with open(f"{wid_path}/completed.txt", "w"):
@@ -226,18 +224,6 @@ def _update_champion_result(
 def _is_scalar(x: Any, num_replicas: int) -> bool:
     """Returns `True` if `x` is a scalar, i.e. a singleton for each replica."""
     return isinstance(x, jnp.ndarray) and x.shape == (num_replicas,)
-
-
-def _save_scalars(step: int, scalars: Dict[str, float], wid_path: str) -> None:
-    """Save scalars to the work unit directory and deletes previously saved scalars."""
-    prev_scalars_paths = glob.glob(f"{wid_path}/scalars_*.json")
-    serialized = json_utils.json_from_pytree(scalars)
-    temp_fname = f"{wid_path}/temp_scalars_{str(int(time.time()))}.json"
-    with open(temp_fname, "w") as f:
-        f.write(serialized)
-    os.rename(temp_fname, f"{wid_path}/scalars_{step:04}.json")
-    for path in prev_scalars_paths:
-        os.remove(path)
 
 
 # -----------------------------------------------------------------------------
