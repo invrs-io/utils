@@ -129,6 +129,7 @@ class WorkUnitTest(unittest.TestCase):
                     f"{wid_path}/checkpoint_0089.json",
                     f"{wid_path}/checkpoint_0099.json",
                     f"{wid_path}/scalars_0099.json",
+                    f"{wid_path}/log.txt",
                 },
             )
             ckpt = checkpoint.load(wid_path, step=99)
@@ -188,6 +189,7 @@ class WorkUnitTest(unittest.TestCase):
                     f"{wid_path}/completed.txt",
                     f"{wid_path}/checkpoint_{latest_step:04}.json",
                     f"{wid_path}/scalars_{latest_step:04}.json",
+                    f"{wid_path}/log.txt",
                 },
             )
             ckpt = checkpoint.load(wid_path, step=latest_step)

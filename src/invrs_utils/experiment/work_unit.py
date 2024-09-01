@@ -3,6 +3,7 @@
 Copyright (c) 2023 The INVRS-IO authors.
 """
 
+import contextlib
 import functools
 import os
 import time
@@ -128,20 +129,24 @@ def run_work_unit(
         scalars[name] = jnp.concatenate([scalars[name], value[jnp.newaxis, :]])
 
     for i in tqdm.trange(latest_step + 1, steps, desc=wid_path.split("/")[-1]):
-        t0 = time.time()
-        (
-            state,
-            skip_update,
-            (params, loss_value, response, eval_metric, metrics, aux),
-        ) = _step_fn(i, state)
-        t1 = time.time()
-
-        for replica, skipped in enumerate(skip_update):
-            if skipped:
-                warnings.warn(
-                    f"Skipped update for replica {replica} due to `nan` values at "
-                    f"step {i}."
-                )
+        with open(f"{wid_path}/log.txt", "a") as f:
+            # Redirect outputs from the console to the `log.txt` file. In cases of
+            # programs having long compile times, jax will otherwise print lengthy
+            # warning messages.
+            with contextlib.redirect_stdout(f):
+                t0 = time.time()
+                (
+                    state,
+                    skip_update,
+                    (params, loss_value, response, eval_metric, metrics, aux),
+                ) = _step_fn(i, state)
+                t1 = time.time()
+                for replica, skipped in enumerate(skip_update):
+                    if skipped:
+                        warnings.warn(
+                            f"Skipped update for replica {replica} due to `nan` "
+                            f"values at step {i}."
+                        )
 
         _log_scalar("loss", loss_value)
         _log_scalar("eval_metric", eval_metric)
