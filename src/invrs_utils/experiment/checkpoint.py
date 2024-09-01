@@ -73,7 +73,7 @@ class CheckpointManager:
         if (step + 1) % self.save_interval_steps != 0 and not force_save:
             return
         serialized = self.serialize_fn(pytree)
-        temp_fname = f"{self.path}/temp_{str(int(time.time()))}.json"
+        temp_fname = f"{self.path}/temp_ckpt_{str(int(time.time()))}.json"
         with open(temp_fname, "w") as f:
             f.write(serialized)
         os.rename(temp_fname, fname_for_step(self.path, step))
