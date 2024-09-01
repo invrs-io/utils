@@ -9,7 +9,10 @@ import os
 import time
 from typing import Any, Callable, Dict, List, Optional, Union
 
+import numpy as onp
 from totypes import json_utils
+
+NDArray = onp.ndarray[Any, Any]
 
 SERIALIZE_FN = json_utils.json_from_pytree
 DESERIALIZE_FN = json_utils.pytree_from_json
@@ -135,7 +138,7 @@ def save_scalars(step: int, scalars: Dict[str, float], wid_path: str) -> None:
         os.remove(path)
 
 
-def load_scalars(path: str) -> Dict[str, float]:
+def load_scalars(path: str) -> Dict[str, NDArray]:
     """Load scalars from the specified path."""
     with open(path) as f:
         serialized = f.read()
