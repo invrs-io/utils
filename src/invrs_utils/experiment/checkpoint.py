@@ -7,9 +7,12 @@ import dataclasses
 import glob
 import os
 import time
-from typing import Any, Callable, List, Optional, Union
+from typing import Any, Callable, Dict, List, Optional, Union
 
+import numpy as onp
 from totypes import json_utils
+
+NDArray = onp.ndarray[Any, Any]
 
 SERIALIZE_FN = json_utils.json_from_pytree
 DESERIALIZE_FN = json_utils.pytree_from_json
@@ -73,7 +76,7 @@ class CheckpointManager:
         if (step + 1) % self.save_interval_steps != 0 and not force_save:
             return
         serialized = self.serialize_fn(pytree)
-        temp_fname = f"{self.path}/temp_{str(int(time.time()))}.json"
+        temp_fname = f"{self.path}/temp_ckpt_{str(int(time.time()))}.json"
         with open(temp_fname, "w") as f:
             f.write(serialized)
         os.rename(temp_fname, fname_for_step(self.path, step))
@@ -121,3 +124,22 @@ def fname_for_step(wid_path: str, step: Union[int, str]) -> str:
 def step_for_fname(checkpoint_fname: str) -> int:
     """Return the step for the given checkpoint filename."""
     return int(checkpoint_fname.split("_")[-1][:-5])
+
+
+def save_scalars(step: int, scalars: Dict[str, float], wid_path: str) -> None:
+    """Save scalars to the work unit directory and deletes previously saved scalars."""
+    prev_scalars_paths = glob.glob(f"{wid_path}/scalars_*.json")
+    serialized = json_utils.json_from_pytree(scalars)
+    temp_fname = f"{wid_path}/temp_scalars_{str(int(time.time()))}.json"
+    with open(temp_fname, "w") as f:
+        f.write(serialized)
+    os.rename(temp_fname, f"{wid_path}/scalars_{step:04}.json")
+    for path in prev_scalars_paths:
+        os.remove(path)
+
+
+def load_scalars(path: str) -> Dict[str, NDArray]:
+    """Load scalars from the specified path."""
+    with open(path) as f:
+        serialized = f.read()
+    return json_utils.pytree_from_json(serialized)

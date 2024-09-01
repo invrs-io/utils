@@ -164,12 +164,9 @@ def run_work_unit(
             champion=champion_result,
             requires_binary=champion_requires_binary,
         )
-        ckpt_dict = {
-            "state": state,
-            "scalars": scalars,
-            "champion_result": champion_result,
-        }
+        ckpt_dict = dict(state=state, scalars=scalars, champion_result=champion_result)
         mngr.save(i, ckpt_dict)
+        checkpoint.save_scalars(i, scalars, wid_path=wid_path)
 
     mngr.save(i, ckpt_dict, force_save=True)
     with open(f"{wid_path}/completed.txt", "w"):
