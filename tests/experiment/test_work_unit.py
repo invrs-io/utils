@@ -52,9 +52,7 @@ def dummy_challenge_with_density():
     class DummyComponent(challenge_base.Component):
         def init(self, key):
             del key
-            return types.Density2DArray(
-                array=jnp.arange(100).reshape(10, 10).astype(float)
-            )
+            return types.Density2DArray(array=jnp.full((10, 10), 0.5))
 
         def response(self, params):
             return jnp.sum(1 - params.array, axis=0), {}
@@ -135,6 +133,74 @@ class WorkUnitTest(unittest.TestCase):
             self.assertSequenceEqual(
                 set(ckpt.keys()), {"state", "scalars", "champion_result"}
             )
+            self.assertSequenceEqual(set(ckpt["scalars"].keys()), expected_scalars)
+            onp.testing.assert_array_equal(
+                jnp.amin(ckpt["scalars"]["loss"], axis=0),
+                ckpt["champion_result"]["loss"],
+            )
+            onp.testing.assert_array_equal(
+                jnp.amax(ckpt["scalars"]["eval_metric"], axis=0),
+                ckpt["champion_result"]["eval_metric"],
+            )
+
+    @parameterized.expand(
+        [
+            ["all", range(100)],
+            ["binary", range(1, 100)],
+        ]
+    )
+    def test_optimize_save_params(self, save_strategy, expected_save_steps):
+        with tempfile.TemporaryDirectory() as wid_path:
+
+            def _run_work_unit():
+                if not os.path.exists(wid_path):
+                    os.makedirs(wid_path)
+
+                work_unit_config = locals()
+                with open(wid_path + "/setup.json", "w") as f:
+                    json.dump(work_unit_config, f, indent=4)
+
+                work_unit.run_work_unit(
+                    key=jax.random.PRNGKey(0),
+                    wid_path=wid_path,
+                    challenge=dummy_challenge_with_density(),
+                    optimizer=invrs_opt.lbfgsb(maxcor=20),
+                    steps=100,
+                    save_params_strategy=save_strategy,
+                    save_interval_steps=10,
+                    max_to_keep=3,
+                    num_replicas=2,
+                )
+
+            _run_work_unit()
+            self.assertSequenceEqual(
+                set(glob.glob(f"{wid_path}/*")),
+                {
+                    f"{wid_path}/setup.json",
+                    f"{wid_path}/completed.txt",
+                    f"{wid_path}/checkpoint_0079.json",
+                    f"{wid_path}/checkpoint_0089.json",
+                    f"{wid_path}/checkpoint_0099.json",
+                    f"{wid_path}/scalars_0099.json",
+                    f"{wid_path}/params",
+                },
+            )
+
+            self.assertSequenceEqual(
+                set(glob.glob(f"{wid_path}/params/*")),
+                {f"{wid_path}/params/params_{i:04}.json" for i in expected_save_steps},
+            )
+
+            ckpt = checkpoint.load(wid_path, step=99)
+            self.assertSequenceEqual(
+                set(ckpt.keys()), {"state", "scalars", "champion_result"}
+            )
+            expected_scalars = {
+                "loss",
+                "step_time",
+                "binarization_degree",
+                "eval_metric",
+            }
             self.assertSequenceEqual(set(ckpt["scalars"].keys()), expected_scalars)
             onp.testing.assert_array_equal(
                 jnp.amin(ckpt["scalars"]["loss"], axis=0),
