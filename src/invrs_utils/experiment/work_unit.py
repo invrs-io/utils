@@ -8,15 +8,19 @@ import os
 import time
 import tqdm
 import warnings
-from typing import Any, Callable, Dict, Protocol, Tuple
+from typing import Any, Callable, Dict, Optional, Protocol, Tuple
 
 import jax
 import jax.numpy as jnp
 from jax import tree_util
+from totypes import json_utils
 
 from invrs_utils.experiment import checkpoint
 
 PyTree = Any
+
+SAVE_ALL = "all"
+SAVE_BINARY = "binary"
 
 
 def run_work_unit(
@@ -27,6 +31,7 @@ def run_work_unit(
     steps: int,
     champion_requires_binary: bool = True,
     response_kwargs_fn: Callable[[int], Dict[str, Any]] = lambda _: {},
+    save_params_strategy: Optional[str] = None,
     save_interval_steps: int = 10,
     max_to_keep: int = 1,
     num_replicas: int = 1,
@@ -54,11 +59,18 @@ def run_work_unit(
         response_kwargs_fn: Function which computes keyword arguments to be supplied to
             the `challenge.component.response` method, given the step number. This
             enables e.g. evaluation with random wavelengths at each step.
+        save_params_strategy: If `True`, all binary designs will be saved to the
+            work unit directory. If `False`, only the champion design stored along with
+            the checkpoint will be retained.
         save_interval_steps: The interval at which checkpoints are saved to `wid_path`.
         max_to_keep: The maximum number of checkpoints to keep.
         num_replicas: The number of replicas for the work unit. Each replica is
             identical except for the random seed used to generate initial parameters.
     """
+    if save_params_strategy not in (SAVE_ALL, SAVE_BINARY, None):
+        raise ValueError(
+            f"Unrecognized `save_params_strategy`, got {save_params_strategy}"
+        )
     if os.path.isfile(f"{wid_path}/completed.txt"):
         return
     if not os.path.exists(wid_path):
@@ -167,6 +179,21 @@ def run_work_unit(
         ckpt_dict = dict(state=state, scalars=scalars, champion_result=champion_result)
         mngr.save(i, ckpt_dict)
         checkpoint.save_scalars(i, scalars, wid_path=wid_path)
+
+        if save_params_strategy == SAVE_ALL:
+            should_save_params = True
+        elif save_params_strategy == SAVE_BINARY:
+            binarization = metrics["binarization_degree"]
+            should_save_params = (binarization is None) or (1 in binarization)
+        else:
+            should_save_params = False
+        if should_save_params:
+            serialized_params = json_utils.json_from_pytree(params)
+            params_path = f"{wid_path}/params"
+            if not os.path.exists(params_path):
+                os.mkdir(params_path)
+            with open(f"{params_path}/params_{i:04}.json", "w") as f:
+                f.write(serialized_params)
 
     mngr.save(i, ckpt_dict, force_save=True)
     with open(f"{wid_path}/completed.txt", "w"):
