@@ -84,7 +84,11 @@ def run_work_unit(
     keys = jax.random.split(key, num_replicas)
     del key
 
-    if mngr.latest_step() is not None:
+    maybe_latest_step = mngr.latest_step()
+    if maybe_latest_step is not None and maybe_latest_step + 1 >= steps:
+        return
+
+    if maybe_latest_step is not None:
         latest_step: int = mngr.latest_step()  # type: ignore[assignment]
         latest_checkpoint = mngr.restore(latest_step)
         state = latest_checkpoint["state"]
