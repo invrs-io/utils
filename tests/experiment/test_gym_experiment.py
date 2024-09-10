@@ -43,7 +43,6 @@ class GymExperimentTest(unittest.TestCase):
                 experiment_path=experiment_path,
                 sweeps=sweeps,
                 work_unit_fn=work_unit_fn,
-                workers=1,
                 dry_run=False,
                 randomize=False,
             )
@@ -60,7 +59,6 @@ class GymExperimentTest(unittest.TestCase):
                 experiment_path=experiment_path,
                 sweeps=sweeps,
                 work_unit_fn=work_unit_fn,
-                workers=1,
                 dry_run=False,
                 randomize=False,
             )

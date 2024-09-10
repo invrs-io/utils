@@ -4,7 +4,6 @@ Copyright (c) 2023 The INVRS-IO authors.
 """
 
 import json
-import multiprocessing as mp
 import os
 import random
 import time
@@ -20,7 +19,6 @@ def run_experiment(
     experiment_path: str,
     sweeps: Sequence[Dict[str, Any]],
     work_unit_fn: Callable[[Any], Any],
-    workers: int,
     dry_run: bool,
     randomize: bool,
 ) -> None:
@@ -31,7 +29,6 @@ def run_experiment(
     # Print some information about the experiment.
     print(
         f"Experiment {experiment_path.split('/')[-1]} (path={experiment_path}, "
-        f"workers={max(1, workers)}, "
         f"work_units={len(sweeps)})"
     )
     for wid_path, kwargs in zip(wid_paths, sweeps):
@@ -54,11 +51,7 @@ def run_experiment(
     if dry_run:
         return
 
-    if workers == 1:
-        _ = list(map(work_unit_fn, path_and_kwargs))
-    else:
-        with mp.Pool(processes=workers) as pool:
-            _ = list(pool.imap_unordered(work_unit_fn, path_and_kwargs))
+    list(map(work_unit_fn, path_and_kwargs))
 
 
 def work_unit_fn(fn: Any) -> Callable[[Tuple[str, Dict[str, Any]]], Any]:
