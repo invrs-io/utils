@@ -40,7 +40,6 @@ class ExperimentTest(unittest.TestCase):
                 experiment_path=experiment_path,
                 sweeps=sweeps,
                 work_unit_fn=work_unit_fn,
-                workers=1,
                 randomize=True,
                 dry_run=False,
             )
