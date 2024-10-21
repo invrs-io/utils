@@ -59,9 +59,10 @@ def run_work_unit(
         response_kwargs_fn: Function which computes keyword arguments to be supplied to
             the `challenge.component.response` method, given the step number. This
             enables e.g. evaluation with random wavelengths at each step.
-        save_params_strategy: If `True`, all binary designs will be saved to the
-            work unit directory. If `False`, only the champion design stored along with
-            the checkpoint will be retained.
+        save_params_strategy: Determines the strategy for saving parameters. If the
+            strategy is `all`, params are saved at every step. The `binary` strategy
+            only saves at steps where the params have a binarization degree of `1`. If
+            the strategy is `None`, parameters are not saved (except via checkpoint).
         save_interval_steps: The interval at which checkpoints are saved to `wid_path`.
         max_to_keep: The maximum number of checkpoints to keep.
         num_replicas: The number of replicas for the work unit. Each replica is
