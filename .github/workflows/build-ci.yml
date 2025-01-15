@@ -76,7 +76,7 @@ jobs:
         run: |
           pytest --cov=invrs_utils tests
 
-  tests-jax-0_4_35:
+  tests-jax-0_4_31:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
