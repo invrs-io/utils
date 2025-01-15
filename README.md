@@ -1,5 +1,6 @@
 # invrs-utils - Miscellaneous utilities
-`v1.4.0`
+![Continuous integration](https://github.com/invrs-io/utils/actions/workflows/build-ci.yml/badge.svg)
+![PyPI version](https://img.shields.io/pypi/v/invrs-utils)
 
 This package is a collection of utilities that may be useful, but do not have fundamental roles in the invrs-io ecosystem. These currently include,
 
