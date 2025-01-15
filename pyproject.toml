@@ -16,6 +16,7 @@ maintainers = [
 ]
 
 dependencies = [
+    "jax",
     "pandas",
     "totypes",
     "tqdm",
