@@ -76,7 +76,7 @@ jobs:
         run: |
           pytest --cov=invrs_utils tests
 
-  tests-jax-0_4_31:
+  tests-jax-0_4_36:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -93,7 +93,7 @@ jobs:
         run: |
             python -m pip install --upgrade pip
             pip install ".[tests,dev]"
-            pip install --upgrade "jax==0.4.31"
+            pip install --upgrade "jax==0.4.36"
 
       - name: Run Python tests
         run: |
