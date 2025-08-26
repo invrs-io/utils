@@ -16,7 +16,7 @@ maintainers = [
 ]
 
 dependencies = [
-    "jax",
+    "jax >= 0.4.36",
     "pandas",
     "totypes",
     "tqdm",
