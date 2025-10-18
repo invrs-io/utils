@@ -1,6 +1,6 @@
 """Test that runs an actual optimization experiemnt of an invrs-gym challenge.
 
-Copyright (c) 2023 The INVRS-IO authors.
+Copyright (c) 2025 invrs.io LLC
 """
 
 import glob
